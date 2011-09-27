@@ -348,11 +348,11 @@ class TVDB(core.Database):
             yield
         metadata = self._db.query(type='metadata')[0]
         series = [ record['tvdb'] for record in self._db.query(type='series') ]
-        for x in self._db.query(type='series'):
-            for b in Series(self, x).images:
-                print b.url
-            print
-        yield
+        # for x in self._db.query(type='series'):
+        #     for b in Series(self, x).images:
+        #         print b.url
+        #     print
+        # yield
         url = self.hostname + '/api/Updates.php?type=all&time=%s' % metadata['servertime']
         attr, updates = (yield parse(url))
         banners = []
