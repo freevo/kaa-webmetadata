@@ -28,7 +28,10 @@ def main():
             print ' ', item.filename
             if not imdb:
                 searchlist = [{'moviehash': item.get('hash'), 'moviebytesize': os.stat(item.filename)[stat.ST_SIZE]}]
-                moviesList = server.SearchSubtitles(token, searchlist)
+                try:
+                    moviesList = server.SearchSubtitles(token, searchlist)
+                except:
+                    moviesList = None
                 if moviesList and moviesList.get('data'):
                     guesses = { None: 0 }
                     for x in moviesList.get('data'):
