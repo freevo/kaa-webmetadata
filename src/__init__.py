@@ -37,6 +37,8 @@ def parse(filename, metadata=None):
     metadata is None it will be created using kaa.metadata. Each
     dictionary-like object is allowed.
     """
+    if filename.startswith('thetvdb:'):
+        return backends['thetvdb'].parse(filename[8:], metadata)
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series', None):

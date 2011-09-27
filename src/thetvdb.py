@@ -178,11 +178,12 @@ class Series(core.Series):
         return self._get_banner(u'series')
 
 class SearchResult(core.Series):
-    def __init__(self, id, title, overview, year):
+    def __init__(self, id, title, overview, year, imdb):
         self.id = id
         self.title = title
         self.overview = overview
         self.year = None
+        self.imdb = imdb
         if year and len(year.split('-')) == 3:
             self.year = year.split('-')[0]
 
@@ -278,13 +279,13 @@ class TVDB(core.Database):
         os.unlink(tmp + '/banners.xml')
         os.rmdir(tmp)
 
-    def parse(self, filename, metadata):
+    def parse(self, alias, metadata):
         """
         Get a Series object based on the alias name
         """
-        if not 'series' in metadata:
-            return None
-        data = self._db.query(type='alias', tvdb=metadata.get('series'))
+        if metadata:
+            alias = metadata.get('series') or alias
+        data = self._db.query(type='alias', tvdb=alias)
         if not data:
             return None
         return Series(self, self._db.query(type='series', id=data[0]['parent_id'])[0])
@@ -298,7 +299,7 @@ class TVDB(core.Database):
         url = self.hostname + '/api/GetSeries.php?seriesname=%s' % urllib.quote(name)
         for name, data in (yield parse(url))[1]:
             result.append(SearchResult('thetvdb:' + data['seriesid'], data['SeriesName'],
-                           data.get('Overview', None), data.get('FirstAired', None)))
+                           data.get('Overview', None), data.get('FirstAired', None), data.get('IMDB_ID')))
         yield result
 
     @kaa.coroutine()
@@ -347,6 +348,11 @@ class TVDB(core.Database):
             yield
         metadata = self._db.query(type='metadata')[0]
         series = [ record['tvdb'] for record in self._db.query(type='series') ]
+        for x in self._db.query(type='series'):
+            for b in Series(self, x).images:
+                print b.url
+            print
+        yield
         url = self.hostname + '/api/Updates.php?type=all&time=%s' % metadata['servertime']
         attr, updates = (yield parse(url))
         banners = []
