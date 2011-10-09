@@ -48,6 +48,8 @@ from kaa.saxutils import ElementParser
 
 import core
 
+from .. import opensubtitles
+
 # get logging object
 log = logging.getLogger('beacon.tvdb')
 
@@ -177,6 +179,7 @@ class Series(core.Series):
     def banner(self):
         return self._get_banner(u'series')
 
+
 class SearchResult(core.Series):
     def __init__(self, id, title, overview, year, imdb):
         self.id = id
@@ -186,6 +189,7 @@ class SearchResult(core.Series):
         self.imdb = imdb
         if year and len(year.split('-')) == 3:
             self.year = year.split('-')[0]
+
 
 class TVDB(core.Database):
     """
@@ -279,7 +283,7 @@ class TVDB(core.Database):
         os.unlink(tmp + '/banners.xml')
         os.rmdir(tmp)
 
-    def parse(self, alias, metadata):
+    def parse(self, alias, metadata=None):
         """
         Get a Series object based on the alias name
         """
@@ -288,10 +292,15 @@ class TVDB(core.Database):
         data = self._db.query(type='alias', tvdb=alias)
         if not data:
             return None
-        return Series(self, self._db.query(type='series', id=data[0]['parent_id'])[0])
+        result = Series(self, self._db.query(type='series', id=data[0]['parent_id'])[0])
+        if metadata and metadata.get('season'):
+            result = result.get_season(metadata.get('season'))
+            if metadata.get('season'):
+                result = result.get_episode(metadata.get('episode'))
+        return result
 
     @kaa.coroutine()
-    def search(self, name):
+    def search(self, name, filename=None, metadata=None):
         """
         Search for a series
         """
@@ -300,6 +309,12 @@ class TVDB(core.Database):
         for name, data in (yield parse(url))[1]:
             result.append(SearchResult('thetvdb:' + data['seriesid'], data['SeriesName'],
                            data.get('Overview', None), data.get('FirstAired', None), data.get('IMDB_ID')))
+        if len(result) > 1 and filename and metadata:
+            log.info('try imdb to get a better idea about the show\'s name')
+            imdb = (yield opensubtitles.search(filename, metadata))
+            for r in result:
+                if 'tt%s' % imdb == r.imdb:
+                    yield [ r ]
         yield result
 
     @kaa.coroutine()
@@ -328,7 +343,6 @@ class TVDB(core.Database):
                 data = self._db.query(type='series', tvdb=id)
                 if data:
                     break
-            self.force_resync()
         if not data:
             log.error('no result from server')
             yield False
@@ -348,11 +362,6 @@ class TVDB(core.Database):
             yield
         metadata = self._db.query(type='metadata')[0]
         series = [ record['tvdb'] for record in self._db.query(type='series') ]
-        # for x in self._db.query(type='series'):
-        #     for b in Series(self, x).images:
-        #         print b.url
-        #     print
-        # yield
         url = self.hostname + '/api/Updates.php?type=all&time=%s' % metadata['servertime']
         attr, updates = (yield parse(url))
         banners = []

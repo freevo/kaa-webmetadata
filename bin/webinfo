@@ -36,6 +36,7 @@ import sys
 import getopt
 
 import kaa
+import kaa.metadata
 import kaa.webmetadata
 
 kaa.webmetadata.init('~/.beacon')
@@ -46,14 +47,18 @@ def main():
     for o, a in opts:
         if o == '--sync':
             # Sync the db. Call this every day or so
-            yield kaa.webmetadata.backends['thetvdb'].sync()
+            yield kaa.webmetadata.sync()
             sys.exit(0)
 
         if o == '--search':
             # webinfo --search list of filenames
             for filename in args:
                 print 'Trying to find information for', os.path.basename(filename)
-                result = yield kaa.webmetadata.search(filename)
+                metadata = kaa.metadata.parse(filename)
+                if metadata.get('series'):
+                    result = yield kaa.webmetadata.tv.search(filename)
+                else:
+                    result = yield kaa.webmetadata.movie.search(filename)
                 if len(result) == 0:
                     print 'error: unable to get any additional information'
                     yield None

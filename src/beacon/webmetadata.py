@@ -47,7 +47,7 @@ from ..parser import register as beacon_register
 # get logging object
 log = logging.getLogger('beacon.webmetadata')
 
-PLUGIN_VERSION = 0.1
+PLUGIN_VERSION = 0.2
 
 
 class Plugin:
@@ -59,14 +59,19 @@ class Plugin:
     beacondb = None
     todo = []
 
+    @kaa.timed(2, kaa.OneShotTimer)
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
-    def guess(self, item):
+    def guess(self, item, mtime):
         """
         Guess some metadata for the item
         """
         if kaa.webmetadata.parse(item.filename):
             log.info('skip %s' % item.filename)
             self.parser(item, None, 'video')
+            yield None
+        if mtime != item._beacon_mtime:
+            log.info('%s still changing .... wait' % item.filename)
+            self.guess(item, item._beacon_mtime)
             yield None
         log.info('guess %s' % item.filename)
         try:
@@ -97,21 +102,27 @@ class Plugin:
         if not attributes:
             attributes = item
         if metadata:
-            attributes['title'] = metadata.title
-            attributes['description'] = metadata.overview
-            if isinstance(metadata, kaa.webmetadata.Episode):
-                attributes['series'] = metadata.series.title
-                attributes['image'] = metadata.image
-            if isinstance(metadata, kaa.webmetadata.Movie):
-                if metadata.posters:
-                    attributes['image'] = metadata.posters[0].url
+            try:
+                attributes['movie'] = False
+                attributes['title'] = metadata.title
+                attributes['description'] = metadata.overview
+                if isinstance(metadata, kaa.webmetadata.Episode):
+                    attributes['series'] = metadata.series.title
+                    attributes['image'] = metadata.image
+                    attributes['poster'] = metadata.posters[0].url
+                if isinstance(metadata, kaa.webmetadata.Movie):
+                    attributes['movie'] = True
+                    if metadata.posters:
+                        attributes['poster'] = metadata.posters[0].url
+            except Exception, e:
+                log.exception('webmetadata assign error')
             return None
         if attributes.get('series') and attributes.get('series') not in self.failed:
-            self.guess(item)
+            self.guess(item, item._beacon_mtime)
         else:
             nfo = os.path.splitext(item.filename)[0] + '.nfo'
-            if os.path.exists(nfo):
-                self.guess(item)
+            if os.path.exists(nfo) or item.get('length', 0) > 4000:
+                self.guess(item, item._beacon_mtime)
         return None
 
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
@@ -152,12 +163,15 @@ class Plugin:
         plugin = Plugin()
         plugin.beacondb = db
         kaa.webmetadata.init(base=db.directory)
-        kaa.webmetadata.backends['thetvdb'].signals['changed'].connect(plugin.resync, True, True)
+        kaa.webmetadata.signals['changed'].connect(plugin.resync, True, True)
         beacon_register(None, plugin.parser)
+        kaa.beacon.register_file_type_attrs('video',
+            poster = (str, kaa.beacon.ATTR_SIMPLE),
+            movie = (bool, kaa.beacon.ATTR_SEARCHABLE))
         if kaa.webmetadata.get_metadata('beacon_init') != PLUGIN_VERSION:
-            # kaa.beacon does not know about this db, we need to create
-            # the metadata for themoviedb.
+            # kaa.beacon does not know about this db
             log.info('populate database with web metadata')
             plugin.resync(force=True)
         else:
-            plugin.resync(force=False)
+            #plugin.resync(force=False)
+            plugin.resync(force=True)

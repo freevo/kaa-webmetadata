@@ -133,32 +133,10 @@ class Entry(object):
         self.id = None
         for key in self._keys:
             setattr(self, key, None)
+
     def items(self):
         return [ (key, getattr(self, key)) for key in self._keys ]
 
-class Movie(Entry):
-
-    _keys = ['title', 'overview', 'year', 'rating', 'runtime', 'posters', 'images' ]
-
-
-class Series(Entry):
-
-    _keys = ['title', 'overview', 'year' ]
-
-    def __str__(self):
-        return str(self.title)
-
-
-class Season(Entry):
-
-    _keys = ['number', 'series' ]
-
-    def __str__(self):
-        return str(self.number)
-
-class Episode(Entry):
-
-    _keys = ['series', 'season', 'number', 'title', 'overview', 'image' ]
 
 class Image(object):
     url = thumbnail = id = filename = ''

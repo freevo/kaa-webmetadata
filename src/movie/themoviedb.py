@@ -47,6 +47,8 @@ from kaa.saxutils import ElementParser, Element
 
 import core
 
+from .. import opensubtitles
+
 # get logging object
 log = logging.getLogger('webmetadata')
 
@@ -78,7 +80,7 @@ class Movie(core.Movie):
 
     def _images(self, tagname, size):
         result = []
-        for id, image in self._data[tagname].items():
+        for id, image in self._data[tagname]:
             i = core.Image()
             for size in (size, 'mid', 'original', 'cover'):
                 if size in image:
@@ -126,7 +128,7 @@ class MovieDB(core.Database):
         results = []
         def handle(element):
             if not element.content:
-                data = dict(categories=[], backdrop={}, poster={})
+                data = dict(categories=[], backdrop=[], poster=[])
                 for child in element:
                     if child.tagname == 'categories' and child.type == 'genre':
                         data['categories'].append(child.name)
@@ -134,9 +136,12 @@ class MovieDB(core.Database):
                         for image in child:
                             if not image.type  in ('backdrop', 'poster'):
                                 continue
-                            if not image.id in data[image.type]:
-                                data[image.type][image.id] = {}
-                            data[image.type][image.id][image.size] = image.url
+                            for id, images in data[image.type]:
+                                if id == image.id:
+                                    images[image.size] = image.url
+                                    break
+                            else:
+                                data[image.type].append((image.id, {image.size:image.url}))
                     elif child.content:
                         data[child.tagname] = child.content
                 results.append(Movie(data))
@@ -153,8 +158,8 @@ class MovieDB(core.Database):
 
     def parse(self, filename, metadata):
         if metadata.get('hash'):
-            data = self._db.query(type='hash', value=u'%s|%s' % \
-                                      (metadata.get('hash'), os.path.getsize(filename)))
+            data = self._db.query(
+                type='hash', value=u'%s|%s' % (metadata.get('hash'), os.path.getsize(filename)))
             if data:
                 data = self._db.query(type='movie', moviedb=data[0]['moviedb'])
                 return Movie(data[0]['data'])
@@ -171,24 +176,19 @@ class MovieDB(core.Database):
     def search(self, filename, metadata):
         apicall = 'http://api.themoviedb.org/2.1/%s/en/xml/' + self._apikey + '/%s'
         result = []
-        # No idea if this code is working. I have no working files
-        # if metadata.hash:
-        #     url = apicall % ('Media.getInfo', '%s/%s' % (metadata.hash, os.path.getsize(filename)))
-        #     result = yield self.download(url)
+        imdb = None
         nfo = os.path.splitext(filename)[0] + '.nfo'
         if os.path.exists(nfo) and not result:
             match = IMDB_REGEXP.search(open(nfo).read())
             if match:
-                url = apicall % ('Movie.imdbLookup', 'tt' + match.groups()[0])
+                imdb = match.groups()[0]
+        if not imdb:
+            imdb = (yield opensubtitles.search(filename, metadata))
+        if imdb:
+            url = apicall % ('Movie.imdbLookup', 'tt' + imdb)
             result = yield self.download(url)
         if metadata.get('title') and not result:
-            url = apicall % ('Movie.search', metadata.get('title'))
-            result = yield self.download(url)
-        # searching based on the filename is bad unless we have some
-        # logic what parts we need.
-        if not result and False:
-            title = os.path.splitext(os.path.basename(filename))[0]
-            url = apicall % ('Movie.search', title)
+            url = apicall % ('Movie.search', urllib.quote(metadata.get('title')))
             result = yield self.download(url)
         for movie in result:
             self._db.add(
