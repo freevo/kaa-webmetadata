@@ -173,5 +173,4 @@ class Plugin:
             log.info('populate database with web metadata')
             plugin.resync(force=True)
         else:
-            #plugin.resync(force=False)
-            plugin.resync(force=True)
+            plugin.resync(force=False)
