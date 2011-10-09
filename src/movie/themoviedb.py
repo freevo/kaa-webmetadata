@@ -187,9 +187,9 @@ class MovieDB(core.Database):
         if imdb:
             url = apicall % ('Movie.imdbLookup', 'tt' + imdb)
             result = yield self.download(url)
-        if metadata.get('title') and not result:
-            url = apicall % ('Movie.search', urllib.quote(metadata.get('title')))
-            result = yield self.download(url)
+        # if metadata.get('title') and not result:
+        #     url = apicall % ('Movie.search', urllib.quote(metadata.get('title')))
+        #     result = yield self.download(url)
         for movie in result:
             self._db.add(
                 'movie', moviedb=int(movie._data['id']), title=movie.title,

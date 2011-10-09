@@ -305,7 +305,8 @@ class TVDB(core.Database):
         Search for a series
         """
         result = []
-        url = self.hostname + '/api/GetSeries.php?seriesname=%s' % urllib.quote(name)
+        name = urllib.quote(name.replace('.', ' ').replace('-', ' ').replace('_', ' '))
+        url = self.hostname + '/api/GetSeries.php?seriesname=%s' % name
         for name, data in (yield parse(url))[1]:
             result.append(SearchResult('thetvdb:' + data['seriesid'], data['SeriesName'],
                            data.get('Overview', None), data.get('FirstAired', None), data.get('IMDB_ID')))

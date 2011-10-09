@@ -34,6 +34,6 @@ def search(filename, metadata=None):
         metadata = kaa.metadata.parse(filename)
     search_list = [metadata.get('hash')]
     result = yield opensubtitles.search(search_list)
-    if result and result['data'] and result['data'][metadata.get('hash')]:
+    if result and isinstance(result['data'], dict) and result['data'][metadata.get('hash')]:
         yield result['data'][metadata.get('hash')]['MovieImdbID']
     yield None

@@ -59,38 +59,39 @@ class Plugin:
     beacondb = None
     todo = []
 
-    @kaa.timed(2, kaa.OneShotTimer)
-    @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
-    def guess(self, item, mtime):
-        """
-        Guess some metadata for the item
-        """
-        if kaa.webmetadata.parse(item.filename):
-            log.info('skip %s' % item.filename)
-            self.parser(item, None, 'video')
-            yield None
-        if mtime != item._beacon_mtime:
-            log.info('%s still changing .... wait' % item.filename)
-            self.guess(item, item._beacon_mtime)
-            yield None
-        log.info('guess %s' % item.filename)
-        try:
-            result = yield kaa.webmetadata.search(item.filename)
-            if len(result) == 1:
-                log.info('found match for %s' % (item.get('series') or item.filename))
-                if not (yield kaa.webmetadata.match(item.filename, result[0].id)):
-                    log.error('matching error ... what to do now?')
-                    yield None
-                if not item.get('series'):
-                    # tv series get an auto sync due to db version
-                    # change. For movies we need to parse again.
-                    self.parser(item, None, 'video')
-                yield None
-        except Exception, e:
-            log.exception('kaa.webmetadata error')
-        log.info('failed guessing %s' % (item.get('series') or item.filename))
-        self.failed.append(item.get('series') or item.filename)
-        kaa.webmetadata.set_metadata('beacon_failed', self.failed)
+    # @kaa.timed(2, kaa.OneShotTimer)
+    # @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
+    # def guess(self, item, mtime):
+    #     """
+    #     Guess some metadata for the item
+    #     """
+    #     if kaa.webmetadata.parse(item.filename):
+    #         log.info('skip %s' % item.filename)
+    #         self.parser(item, None, 'video')
+    #         yield None
+    #     if mtime != item._beacon_mtime:
+    #         log.info('%s still changing .... wait' % item.filename)
+    #         self.guess(item, item._beacon_mtime)
+    #         yield None
+    #     log.info('guess %s' % item.filename)
+    #     try:
+    #         result = yield kaa.webmetadata.search(item.filename)
+    #         if len(result) == 1:
+    #             log.info('found match for %s' % (item.get('series') or item.filename))
+    #             if not (yield kaa.webmetadata.match(item.filename, result[0].id)):
+    #                 log.error('matching error ... what to do now?')
+    #                 yield None
+    #             if not item.get('series'):
+    #                 # tv series get an auto sync due to db version
+    #                 # change. For movies we need to parse again.
+    #                 # FIXME: that does not seems to work :(
+    #                 self.parser(item, None, 'video')
+    #             yield None
+    #     except Exception, e:
+    #         log.exception('kaa.webmetadata error')
+    #     log.info('failed guessing %s' % (item.get('series') or item.filename))
+    #     self.failed.append(item.get('series') or item.filename)
+    #     kaa.webmetadata.set_metadata('beacon_failed', self.failed)
 
     def parser(self, item, attributes, type):
         """
@@ -117,12 +118,12 @@ class Plugin:
             except Exception, e:
                 log.exception('webmetadata assign error')
             return None
-        if attributes.get('series') and attributes.get('series') not in self.failed:
-            self.guess(item, item._beacon_mtime)
-        else:
-            nfo = os.path.splitext(item.filename)[0] + '.nfo'
-            if os.path.exists(nfo) or item.get('length', 0) > 4000:
-                self.guess(item, item._beacon_mtime)
+        # if attributes.get('series') and attributes.get('series') not in self.failed:
+        #     self.guess(item, item._beacon_mtime)
+        # else:
+        #     nfo = os.path.splitext(item.filename)[0] + '.nfo'
+        #     if os.path.exists(nfo) or item.get('length', 0) > 4000:
+        #         self.guess(item, item._beacon_mtime)
         return None
 
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
