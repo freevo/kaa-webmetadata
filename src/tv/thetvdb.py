@@ -373,3 +373,12 @@ class TVDB(core.Database):
             if element == 'Time':
                 self._db.update(metadata, servertime=int(data), localtime=int(time.time()))
         self.force_resync()
+
+
+    def add_series_by_search_result(self, result):
+        """
+        Adds a new series given a SearchResult to the database.
+        """
+        if not result.id.startswith('thetvdb:'):
+            raise ValueError('Search result is not a valid TheTVDB result')
+        return self.match(result.title, result.id[8:])
