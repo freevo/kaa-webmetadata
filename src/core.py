@@ -30,6 +30,7 @@
 # -----------------------------------------------------------------------------
 
 import os
+import urllib
 
 import kaa
 import kaa.db
@@ -64,8 +65,9 @@ class Database(MediaInfo):
     def __init__(self, database):
         super(Database, self).__init__()
         # set up the database and the version file
-        if not os.path.exists(os.path.dirname(database)):
-            os.makedirs(os.path.dirname(database))
+        dbdir = os.path.dirname(database)
+        if dbdir and not os.path.exists(dbdir):
+            os.makedirs(dbdir)
         self._db = kaa.db.Database(database + '.db')
         self._versionfile = database + '.version'
         if not os.path.exists(self._versionfile):
