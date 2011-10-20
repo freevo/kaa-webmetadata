@@ -92,9 +92,10 @@ class Database(MediaInfo):
             self.version = version
             self.signals['changed'].emit()
 
-    def force_resync(self):
+    def notify_resync(self):
         """
-        Force all applications using the database to resync
+        Notify all applications using the database that a resync is necessary by
+        updating the version or the db.
         """
         self.version += 1
         open(self._versionfile, 'w').write(str(self.version))

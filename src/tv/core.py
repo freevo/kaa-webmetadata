@@ -2,12 +2,12 @@ from ..core import Entry, Image, Database, WORKER_THREAD
 
 class Series(Entry):
 
-    _keys = ['title', 'overview', 'year' ]
+    _keys = ['name', 'overview', 'year' ]
 
     posters = []
 
     def __str__(self):
-        return str(self.title)
+        return str(self.name)
 
 
 class Season(Entry):
@@ -24,7 +24,7 @@ class Season(Entry):
 
 class Episode(Entry):
 
-    _keys = ['series', 'season', 'number', 'title', 'overview', 'image' ]
+    _keys = ['series', 'season', 'number', 'name', 'overview', 'image' ]
 
     @property
     def posters(self):

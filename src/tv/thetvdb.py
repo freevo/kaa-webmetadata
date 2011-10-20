@@ -85,22 +85,19 @@ class Episode(core.Episode):
     """
     Object for an episode
     """
-    def __init__(self, tvdb, series, season, episode):
+    def __init__(self, tvdb, series, season, dbrow):
         super(Episode, self).__init__()
+        self._dbrow = dbrow
         self.tvdb = tvdb
         self.series = series
         self.season = season
-        self.episode = episode
-        self.number = episode
-        records = self.tvdb._db.query(type='episode', parent=('series', series.id),
-            season=self.season.season, episode=self.episode)
-        self.data = {}
-        if records:
-            self.data = records[0]
-            self.title = self.data.get('name')
-            self.overview = self.data['data'].get('Overview')
-            if self.data['data'].get('filename'):
-                self.image = self.tvdb.hostname + '/banners/' + self.data['data'].get('filename')
+        self.number = dbrow['data'].get('EpisodeNumber')
+        self.name = dbrow['name']
+        self.overview = dbrow['data'].get('Overview')
+        if dbrow['data'].get('filename'):
+            self.image = self.tvdb.hostname + '/banners/' + dbrow['data']['filename']
+        else:
+            self.image = None
 
 
 class Season(core.Season):
@@ -109,17 +106,40 @@ class Season(core.Season):
     """
     def __init__(self, tvdb, series, season):
         super(Season, self).__init__()
+        self._episode_cache = []
+        self._episode_cache_ver = None
         self.tvdb = tvdb
         self.series = series
-        self.season = season
-        self.data = {}
         self.number = season
 
-    def get_episode(self, episode):
+    
+    @property
+    def episodes(self):
         """
-        Get Episode object
+        A list of all episodes as Episode objects for this season.  The list is
+        in order, such that the list index corresponds with the episode number,
+        starting at 0 (i.e. episodes[0] is episode 1).
         """
-        return Episode(self.tvdb, self.series, self, episode)
+        if self._episode_cache_ver == self.tvdb.version:
+            return self._episode_cache
+
+        dbrows = self.tvdb._db.query(type='episode', parent=self.series._dbrow, season=self.number)
+        episodes = [Episode(self.tvdb, self.series, self, dbrow) for dbrow in dbrows]
+        # We can't assume the episode list will be in order, and that we won't
+        # have any gaps.  So determine the highest episode, populate a list of
+        # Nones, and fill in each index based on the episode number.  XXX: this
+        # assumes EpisodeNumber is always an int.  If it may not be, we should
+        # construct a dict instead.
+        highest = max(int(ep.number) for ep in episodes) if episodes else 0
+        if highest > 1000:
+            # Small sanity check to prevent us from constructing a massive list.
+            raise ValueError('Highest episode # is %d which is unexpectedly high' % highest)
+        self._episode_cache = [None for i in range(highest)]
+        for ep in episodes:
+            self._episode_cache[int(ep.number)-1] = ep
+        self._episode_cache_ver = self.tvdb.version
+        return self._episode_cache
+
 
     # @property
     # def banner(self):
@@ -134,25 +154,48 @@ class Series(core.Series):
     """
     Object for a series
     """
-    def __init__(self, tvdb, data):
+    def __init__(self, tvdb, dbrow):
         super(Series, self).__init__()
         self._keys = self._keys + [ 'banner', 'posters', 'images' ]
-        self.title = data['name']
-        self.id = data['id']
+        self._dbrow = dbrow
+        self._season_cache = []
+        self._season_cache_ver = None
+        self.name = dbrow['name']
+        self.id = dbrow['id']
         self.tvdb = tvdb
-        self.data = data
-        if data.get('data'):
-            self.overview = data['data'].get('Overview')
+        self.overview = dbrow['data'].get('Overview')
 
-    def get_season(self, season):
+    @property
+    def seasons(self):
         """
-        Get Season object
+        A list of all seasons as Season objects for this series.  The list is
+        in order, such that the list index corresponds with the series number,
+        starting at 0 (i.e. seasons[0] is season 1).
         """
-        return Season(self.tvdb, self, season)
+        if self._season_cache_ver == self.tvdb.version:
+            return self._season_cache
+
+        # Find out how many seasons in this series by fetching the highest season.
+        seasons = self.tvdb._db.query(type='episode', parent=self._dbrow, attrs=['season'], distinct=True)
+        highest = max(r['season'] for r in seasons) if seasons else 0
+        self._season_cache = [Season(self.tvdb, self, n + 1) for n in range(highest)]
+        self._season_cache_ver = self.tvdb.version
+        return self._season_cache
+
+    @property
+    def episodes(self):
+        """
+        A list of episodes for all episodes in this series, for all seasons.
+        """
+        episodes = []
+        for season in self.seasons:
+            episodes.extend(season.episodes)
+        return episodes
+
 
     def _get_banner(self, btype):
         banner = []
-        for r in self.tvdb._db.query(type='banner', parent=('series', self.data['id']), btype=btype):
+        for r in self.tvdb._db.query(type='banner', parent=self._dbrow, btype=btype):
             entry = r.get('data')
             for key, value in entry.items():
                 if key.lower().endswith('path'):
@@ -181,9 +224,9 @@ class Series(core.Series):
 
 
 class SearchResult(core.Series):
-    def __init__(self, id, title, overview, year, imdb):
+    def __init__(self, id, name, overview, year, imdb):
         self.id = id
-        self.title = title
+        self.name = name
         self.overview = overview
         self.year = None
         self.imdb = imdb
@@ -202,6 +245,8 @@ class TVDB(core.Database):
         super(TVDB, self).__init__(database)
         self.hostname = 'http://www.thetvdb.com'
         self._apikey = apikey
+        self._series_cache = []
+        self._series_cache_ver = None
         self.api = '%s/api/%s/' % (self.hostname, self._apikey)
         # set up the database itself
         self._db.register_object_type_attrs("metadata",
@@ -215,7 +260,7 @@ class TVDB(core.Database):
             data = (dict, kaa.db.ATTR_SIMPLE),
         )
         self._db.register_object_type_attrs("alias",
-            tvdb = (unicode, kaa.db.ATTR_SEARCHABLE),
+            tvdb = (unicode, kaa.db.ATTR_SEARCHABLE | kaa.db.ATTR_IGNORE_CASE),
         )
         self._db.register_object_type_attrs("episode",
             tvdb = (int, kaa.db.ATTR_SEARCHABLE),
@@ -245,59 +290,73 @@ class TVDB(core.Database):
         self._db.update(current[0], **kwargs)
         return current[0]['id']
 
+
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
     def _update_series(self, id):
-        tmp = kaa.tempfile('thetvdb/%s' % id)
-        if not os.path.isdir(tmp):
-            os.mkdir(tmp)
-            return
-        f = open('%s/en.zip' % tmp, 'w')
+        f = open(kaa.tempfile('thetvdb-%s.zip' % id), 'w')
         f.write((yield download(self.api + 'series/%s/all/en.zip' % id)))
         f.close()
-        z = zipfile.ZipFile('%s/en.zip' % tmp)
-        z.extract('en.xml', tmp)
-        z.extract('banners.xml', tmp)
-        os.unlink(tmp + '/en.zip')
+
+        z = zipfile.ZipFile(f.name)
         parent = None
-        for name, data in (yield parse(open(tmp + '/en.xml')))[1]:
+        for name, data in (yield parse(z.open('en.xml')))[1]:
             if name == 'Series':
-                s = self._update_db('series', int(data.get('id')), name=data.get('SeriesName'), data=data)
-                parent = ('series', s)
+                objid = self._update_db('series', int(data.get('id')), name=data.get('SeriesName'), data=data)
+                parent = ('series', objid)
             elif name == 'Episode':
                 if not parent:
-                    raise RuntimeError()
+                    raise ValueError('Unexpected parse error: got Episode element before Series')
                 self._update_db('episode', int(data.get('id')), name=data.get('EpisodeName'), parent=parent,
                     season=int(data.get('SeasonNumber')), episode=int(data.get('EpisodeNumber')),
                     data=data)
             else:
                 log.error('unknown element: %s', name)
         self._db.commit()
-        os.unlink(tmp + '/en.xml')
-        for name, data in (yield parse(open(tmp + '/banners.xml')))[1]:
+
+        for name, data in (yield parse(z.open('banners.xml')))[1]:
             if name == 'Banner':
                 self._update_db('banner', int(data.get('id')), btype=data.get('BannerType'),
                     data=data, parent=parent)
             else:
                 log.error('unknown element: %s', name)
         self._db.commit()
-        os.unlink(tmp + '/banners.xml')
-        os.rmdir(tmp)
+        os.unlink(f.name)
 
-    def parse(self, alias, metadata=None):
+
+    @property
+    def series(self):
         """
-        Get a Series object based on the alias name
+        A list of Series objects of all series in the database.
         """
-        if metadata:
-            alias = metadata.get('series') or alias
-        data = self._db.query(type='alias', tvdb=alias)
-        if not data:
-            return None
-        result = Series(self, self._db.query(type='series', id=data[0]['parent_id'])[0])
-        if metadata and metadata.get('season'):
-            result = result.get_season(metadata.get('season'))
-            if metadata.get('season'):
-                result = result.get_episode(metadata.get('episode'))
+        if self._series_cache_ver != self.version:
+            self._series_cache = [Series(self, data) for data in self._db.query(type='series')]
+            self._series_cache_ver = self.version
+        return self._series_cache
+
+
+    def get_series(self, name):
+        """
+        Fetch a series by the series name or associated alias.
+        """
+        obj = self._db.query_one(type='alias', tvdb=kaa.py3_str(name))
+        if obj:
+            return Series(self, self._db.query_one(type='series', id=obj['parent_id']))
+
+
+
+    def get_entry_from_metadata(self, metadata, alias=None):
+        """
+        Get an Entry object based on the kaa.metadata object.  The returned
+        entry may be a Series, Season, or Episode, depending on the granularity
+        of metadata available.
+        """
+        result = get_series(metadata.get('series') or alias)
+        if result and metadata.get('season'):
+            result = result.get_season(metadata['season'])
+            if result and metadata.get('episode'):
+                result = result.get_episode(metadata['episode'])
         return result
+
 
     @kaa.coroutine()
     def search(self, name, filename=None, metadata=None):
@@ -319,66 +378,85 @@ class TVDB(core.Database):
         yield result
 
     @kaa.coroutine()
-    def match(self, metadata, id):
+    def add_series_by_id(self, id, alias=None):
         """
-        Match the metadata to the given id. Metadata can either be a
-        string with the name to match or a kaa.metadata object.
+        Adds the TV series specified by the TVDB id number to the local
+        database.
+
+        :param id: the TVDB id number
+        :param alias: optional alias with which to associate this TV series
+                      for later lookup.
+
+        If the series is already added to the database, the given alias will be
+        associated with it.
         """
-        if isinstance(metadata, (str, unicode)):
-            alias = kaa.str_to_unicode(metadata)
-        else:
-            alias = metadata.get('series')
-        if not alias:
-            log.error('no alias given')
-            yield False
-        if not self._db.query(type='metadata'):
-            attr, data = (yield parse(self.hostname + '/api/Updates.php?type=none'))
+        if isinstance(alias, basestring):
+            alias = kaa.py3_str(alias)
+        if id.startswith(TVDB.scheme):
+            id = id[len(TVDB.scheme):]
+
+        if not self._db.get_metadata('webmetadata::servertime'):
+            # DB does not contain server time.  Fetch and set.
+            attr, data = yield parse(self.hostname + '/api/Updates.php?type=none')
             data = dict(data)
-            self._db.add('metadata', servertime=int(data['Time']), localtime=int(time.time()))
-        data = self._db.query(type='series', tvdb=id)
-        if not data:
+            self._db.set_metadata('webmetadata::servertime', int(data['Time']))
+            # XXX: why do we store localtime? Do we use this anywhere?
+            self._db.set_metadata('webmetadata::localtime', int(time.time()))
+
+        series = self._db.query_one(type='series', tvdb=id)
+        if not series:
             log.info('query thetvdb for %s' % id)
             for i in range(3):
                 # try to get results three times before giving up
                 yield self._update_series(id)
-                data = self._db.query(type='series', tvdb=id)
-                if data:
+                series = self._db.query_one(type='series', tvdb=id)
+                if series:
                     break
-        if not data:
-            log.error('no result from server')
-            yield False
-        self._update_db('alias', alias, parent=('series', data[0]['id']))
-        self._update_db('alias', data[0]['name'], parent=('series', data[0]['id']))
+            else:
+                log.error('TheTVDB failed to provide a result')
+                yield False
+
+        self._update_db('alias', series['name'], parent=series)
+        if alias:
+            self._update_db('alias', alias, parent=series)
         self._db.commit()
-        series = Series(self, data[0])
-        self.force_resync()
-        yield True
+        self.notify_resync()
+        yield Series(self, series)
+
 
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
     def sync(self):
         """
         Sync database with server
         """
-        if not self._db.query(type='metadata'):
+        servertime = self._db.get_metadata('webmetadata::servertime')
+        if not servertime:
+            # No servertime stored, so there must not be any series in db.
             yield
-        metadata = self._db.query(type='metadata')[0]
+        # Grab all series ids currently in the DB.
         series = [ record['tvdb'] for record in self._db.query(type='series') ]
-        url = self.hostname + '/api/Updates.php?type=all&time=%s' % metadata['servertime']
+        # Fetch all updates since the last stored servertime
+        url = self.hostname + '/api/Updates.php?type=all&time=%s' % servertime
         attr, updates = (yield parse(url))
         banners = []
         for element, data in updates:
-            if element == 'Series':
-                if int(data) in series:
-                    yield self._update_series(data)
-            if element == 'Time':
-                self._db.update(metadata, servertime=int(data), localtime=int(time.time()))
-        self.force_resync()
+            if element == 'Series' and int(data) in series:
+                log.info('Update series %s', data)
+                yield self._update_series(data)
+            elif element == 'Time':
+                log.info('Set servertime %s', data)
+                self._db_servertime = int(data)
+                self._db.set_metadata('webmetadata::servertime', int(data))
+                self._db.set_metadata('webmetadata::localtime', int(time.time()))
+
+        self.notify_resync()
 
 
-    def add_series_by_search_result(self, result):
+    @kaa.coroutine()
+    def add_series_by_search_result(self, result, alias=None):
         """
         Adds a new series given a SearchResult to the database.
         """
         if not result.id.startswith('thetvdb:'):
             raise ValueError('Search result is not a valid TheTVDB result')
-        return self.match(result.title, result.id[8:])
+        yield self.add_series_by_id(result.id, alias)
