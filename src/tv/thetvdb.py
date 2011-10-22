@@ -249,11 +249,6 @@ class TVDB(core.Database):
         self._series_cache_ver = None
         self.api = '%s/api/%s/' % (self.hostname, self._apikey)
         # set up the database itself
-        self._db.register_object_type_attrs("metadata",
-            servertime = (int, kaa.db.ATTR_SEARCHABLE),
-            localtime = (int, kaa.db.ATTR_SEARCHABLE),
-            metadata = (dict, kaa.db.ATTR_SIMPLE),
-        )
         self._db.register_object_type_attrs("series",
             tvdb = (int, kaa.db.ATTR_SEARCHABLE),
             name = (unicode, kaa.db.ATTR_SEARCHABLE),
