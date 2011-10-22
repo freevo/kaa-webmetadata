@@ -460,3 +460,16 @@ class TVDB(core.Database):
         if not result.id.startswith('thetvdb:'):
             raise ValueError('Search result is not a valid TheTVDB result')
         yield self.add_series_by_id(result.id, alias)
+
+    
+    def delete_series(self, series):
+        """
+        Deletes a series from the database.
+
+        :param series: the series to remove
+        :type series: Series object
+        """
+        self._db.delete_by_query(parent=series._dbrow)
+        self._db.delete(series._dbrow)
+        self._db.commit()
+        self.notify_resync()
