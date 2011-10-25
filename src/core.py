@@ -65,11 +65,14 @@ class Database(MediaInfo):
     def __init__(self, database):
         super(Database, self).__init__()
         # set up the database and the version file
-        dbdir = os.path.dirname(database)
-        if dbdir and not os.path.exists(dbdir):
-            os.makedirs(dbdir)
-        self._db = kaa.db.Database(database + '.db')
-        self._versionfile = database + '.version'
+        if isinstance(database, kaa.db.Database):
+            self._db = database
+        else:
+            dbdir = os.path.dirname(database)
+            if dbdir and not os.path.exists(dbdir):
+                os.makedirs(dbdir)
+            self._db = kaa.db.Database(database + '.db')
+        self._versionfile = self._db.filename + '.version'
         if not os.path.exists(self._versionfile):
             open(self._versionfile, 'w').write('0')
         try:
