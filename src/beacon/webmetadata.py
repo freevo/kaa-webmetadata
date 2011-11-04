@@ -85,7 +85,7 @@ class Plugin:
         Init the plugin.
         """
         plugin = Plugin()
-        kaa.webmetadata.init(base=db.directory)
+        kaa.webmetadata.init()
         beacon_register(None, plugin.parser)
         kaa.beacon.register_file_type_attrs('video',
             poster = (str, kaa.beacon.ATTR_SIMPLE),
