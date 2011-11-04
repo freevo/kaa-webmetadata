@@ -38,16 +38,23 @@ import getopt
 import kaa
 import kaa.metadata
 import kaa.webmetadata
+import kaa.beacon
 
-kaa.webmetadata.init('~/.beacon')
+class SearchResult(object):
+    pass
 
 @kaa.coroutine()
 def main():
-    opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'search', 'match' ])
+    yield kaa.beacon.connect()
+    yield kaa.webmetadata.init()
+
+    opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'search', 'match', 'guess' ])
     for o, a in opts:
         if o == '--sync':
             # Sync the db. Call this every day or so
             yield kaa.webmetadata.sync()
+            # sleep 0.2 seconds for the db to sync
+            yield kaa.delay(0.2)
             sys.exit(0)
 
         if o == '--search':
@@ -55,23 +62,37 @@ def main():
             for filename in args:
                 print 'Trying to find information for', os.path.basename(filename)
                 metadata = kaa.metadata.parse(filename)
-                if metadata.get('series'):
-                    result = yield kaa.webmetadata.tv.search(filename)
-                else:
-                    result = yield kaa.webmetadata.movie.search(filename)
+                result = yield kaa.webmetadata.tv.search(filename)
                 if len(result) == 0:
                     print 'error: unable to get any additional information'
-                    yield None
+                    sys.exit(0)
                 if result:
                     for entry in result:
-                        print ' %s %s (%s)' % (entry.id, entry.title, entry.year)
+                        print ' %s %s (%s)' % (entry.id, entry.name, entry.year)
             sys.exit(0)
 
         if o == '--match':
-            sid, filename = args
-            yield kaa.webmetadata.match(filename, sid)
+            result = SearchResult()
+            result.id, filename = args
+            yield kaa.webmetadata.match(filename, result)
+            # sleep 0.2 seconds for the db to sync
+            yield kaa.delay(0.2)
             sys.exit(0)
 
+        if o == '--guess':
+            for item in (yield kaa.beacon.query(type='video')):
+                if not item.filename:
+                    continue
+                if not kaa.webmetadata.parse(item.filename, item):
+                    print item.filename,
+                    sys.stdout.flush()
+                    result = yield kaa.webmetadata.search(item.filename, item)
+                    if len(result) == 1:
+                        print 'found'
+                        yield kaa.webmetadata.match(item.filename, result[0])
+                    else:
+                        print 'failure'
+            sys.exit(0)
 
     for filename in args:
         print filename
