@@ -2,9 +2,11 @@ import os
 import kaa
 import kaa.metadata
 
+import core
+
 backends = {}
 
-def init(base='~/.beacon'):
+def init(base):
     """
     Initialize the kaa.webmetadata databases
     """
@@ -24,9 +26,9 @@ def parse(filename, metadata=None):
     if not metadata.get('series', None):
         return None
     for db in backends.values():
-        info = db.parse(filename, metadata)
-        if info:
-            return info
+        result = db.get_entry_from_metadata(metadata)
+        if result and isinstance(result, core.Episode):
+            return result
 
 def search(filename, metadata=None, backend='thetvdb'):
     """
@@ -43,22 +45,17 @@ def search(filename, metadata=None, backend='thetvdb'):
     return None
 
 @kaa.coroutine()
-def match(filename, id, metadata=None):
+def add_series_by_search_result(result, alias=None):
     """
-    Match the given filename with the id for future parsing. If
-    metadata is None it will be created using kaa.metadata. Each
-    dictionary-like object is allowed.
+    Adds a new series given a SearchResult to the database.
     """
-    parser, id = id.split(':')
-    if not parser in backends:
-        yield None
-    if not metadata:
-        metadata = kaa.metadata.parse(filename)
-    metadata.filesize = os.path.getsize(filename)
-    yield (yield backends[parser].match(metadata, int(id)))
+    module = backends.get(result.id.split(':')[0], None)
+    if not module:
+        raise ValueError('Search result is not valid')
+    yield (yield module.add_series_by_search_result(result, alias))
 
 def series(name):
-    for backend in backends.values():
-        series = backend.parse(name)
+    for db in backends.values():
+        series = db.get_entry_from_metadata(dict(series=name))
         if series:
             return series

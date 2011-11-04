@@ -67,7 +67,7 @@ class Movie(core.Movie):
     def __init__(self, data):
         self._data = data
         self.id = 'themoviedb:%s' % data['id']
-        self.title = data['name']
+        self.name = data['name']
         self.overview = data.get('overview')
         self.rating = data.get('rating')
         self.runtime = data.get('runtime')
@@ -113,7 +113,7 @@ class MovieDB(core.Database):
         self._db.register_object_type_attrs("movie",
             moviedb = (int, kaa.db.ATTR_SEARCHABLE),
             imdb = (unicode, kaa.db.ATTR_SEARCHABLE),
-            title = (unicode, kaa.db.ATTR_SEARCHABLE),
+            name = (unicode, kaa.db.ATTR_SEARCHABLE),
             data = (dict, kaa.db.ATTR_SIMPLE),
         )
         self._db.register_object_type_attrs("hash",
@@ -180,19 +180,17 @@ class MovieDB(core.Database):
         nfo = os.path.splitext(filename)[0] + '.nfo'
         if os.path.exists(nfo) and not result:
             match = IMDB_REGEXP.search(open(nfo).read())
-            if match:
-                imdb = match.groups()[0]
-        if not imdb:
-            imdb = (yield opensubtitles.search(filename, metadata))
+            if match: imdb = match.groups()[0]
+        if not imdb: 
+            try:
+                imdb = (yield opensubtitles.search(filename, metadata))
+            except Exception, e:
+                log.exception('opensubtitles error')
         if imdb:
             url = apicall % ('Movie.imdbLookup', 'tt' + imdb)
             result = yield self.download(url)
-        # if metadata.get('title') and not result:
-        #     url = apicall % ('Movie.search', urllib.quote(metadata.get('title')))
-        #     result = yield self.download(url)
         for movie in result:
-            self._db.add(
-                'movie', moviedb=int(movie._data['id']), title=movie.title,
+            self._db.add('movie', moviedb=int(movie._data['id']), name=movie.name,
                 imdb=movie._data.get('imdb_id', ''), data=movie._data)
         self._db.commit()
         yield result

@@ -112,7 +112,7 @@ class Season(core.Season):
         self.series = series
         self.number = season
 
-    
+
     @property
     def episodes(self):
         """
@@ -345,11 +345,12 @@ class TVDB(core.Database):
         entry may be a Series, Season, or Episode, depending on the granularity
         of metadata available.
         """
-        result = get_series(metadata.get('series') or alias)
+        result = self.get_series(metadata.get('series') or alias)
         if result and metadata.get('season'):
-            result = result.get_season(metadata['season'])
+            result = Season(self, result, metadata['season'])
             if result and metadata.get('episode'):
-                result = result.get_episode(metadata['episode'])
+                if metadata.get('episode') <= len(result.episodes):
+                    result = result.episodes[metadata.get('episode')-1]
         return result
 
 
@@ -363,13 +364,16 @@ class TVDB(core.Database):
         url = self.hostname + '/api/GetSeries.php?seriesname=%s' % name
         for name, data in (yield parse(url))[1]:
             result.append(SearchResult('thetvdb:' + data['seriesid'], data['SeriesName'],
-                           data.get('Overview', None), data.get('FirstAired', None), data.get('IMDB_ID')))
+                data.get('Overview', None), data.get('FirstAired', None), data.get('IMDB_ID')))
         if len(result) > 1 and filename and metadata:
             log.info('try imdb to get a better idea about the show\'s name')
-            imdb = (yield opensubtitles.search(filename, metadata))
-            for r in result:
-                if 'tt%s' % imdb == r.imdb:
-                    yield [ r ]
+            try:
+                imdb = (yield opensubtitles.search(filename, metadata))
+                for r in result:
+                    if 'tt%s' % imdb == r.imdb:
+                        yield [ r ]
+            except Exception, e:
+                log.exception('opensubtitles error')
         yield result
 
     @kaa.coroutine()
@@ -413,6 +417,9 @@ class TVDB(core.Database):
 
         self._update_db('alias', series['name'], parent=series)
         if alias:
+            for old in self._db.query(type='alias', tvdb=alias):
+                # remove old (wrong) mapping (if given)
+                self._db.delete(old)
             self._update_db('alias', alias, parent=series)
         self._db.commit()
         self.notify_resync()
@@ -420,7 +427,7 @@ class TVDB(core.Database):
 
 
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
-    def sync(self):
+    def sync(self, force=False):
         """
         Sync database with server
         """
@@ -430,6 +437,11 @@ class TVDB(core.Database):
             yield
         # Grab all series ids currently in the DB.
         series = [ record['tvdb'] for record in self._db.query(type='series') ]
+        if force:
+            for id in series:
+                yield self._update_series(id)
+            self.notify_resync()
+            yield
         # Fetch all updates since the last stored servertime
         url = self.hostname + '/api/Updates.php?type=all&time=%s' % servertime
         attr, updates = (yield parse(url))
@@ -443,7 +455,6 @@ class TVDB(core.Database):
                 self._db_servertime = int(data)
                 self._db.set_metadata('webmetadata::servertime', int(data))
                 self._db.set_metadata('webmetadata::localtime', int(time.time()))
-
         self.notify_resync()
 
 
@@ -454,9 +465,9 @@ class TVDB(core.Database):
         """
         if not result.id.startswith('thetvdb:'):
             raise ValueError('Search result is not a valid TheTVDB result')
-        yield self.add_series_by_id(result.id, alias)
+        yield (yield self.add_series_by_id(result.id, alias))
 
-    
+
     def delete_series(self, series):
         """
         Deletes a series from the database.
