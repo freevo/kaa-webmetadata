@@ -455,6 +455,7 @@ class TVDB(core.Database):
                 self._db_servertime = int(data)
                 self._db.set_metadata('webmetadata::servertime', int(data))
                 self._db.set_metadata('webmetadata::localtime', int(time.time()))
+        self._db.commit()
         self.notify_resync()
 
 
