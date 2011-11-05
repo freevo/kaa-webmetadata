@@ -43,9 +43,11 @@ setup(module       = 'webmetadata',
       summary      = 'Receive Metadata from the Web',
       scripts      = [ 'bin/webinfo' ],
       # used when setuptools is not available
-      plugins      = { 'kaa.beacon.server.plugins': 'src/beacon' },
+      plugins      = { 'kaa.beacon.server.plugins': 'src/beacon/server',
+                       'kaa.beacon.plugins': 'src/beacon/client'},
       # used when setuptools is available and plugin is installed as an egg
-      entry_points = {'kaa.beacon.server.plugins': 'tvdb = kaa.webmetadata.beacon.tvdb:Plugin'},
+      entry_points = {'kaa.beacon.server.plugins': 'webmetadata = kaa.webmetadata.beacon.server.webmetadata:Plugin',
+                      'kaa.beacon.plugins': 'webmetadata = kaa.webmetadata.beacon.client.webmetadata:Plugin'},
       rpminfo      = {
           'requires':       'python-kaa-base >= 0.1.2',
           'build_requires': 'python-kaa-base >= 0.1.2'

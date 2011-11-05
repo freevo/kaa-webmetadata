@@ -46,15 +46,12 @@ class SearchResult(object):
 @kaa.coroutine()
 def main():
     yield kaa.beacon.connect()
-    yield kaa.webmetadata.init()
 
     opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'search', 'match', 'guess' ])
     for o, a in opts:
         if o == '--sync':
             # Sync the db. Call this every day or so
             yield kaa.webmetadata.sync()
-            # sleep 0.2 seconds for the db to sync
-            yield kaa.delay(0.2)
             sys.exit(0)
 
         if o == '--search':

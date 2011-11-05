@@ -43,11 +43,12 @@ import kaa.beacon
 
 # relative beacon server imports
 from ..parser import register as beacon_register
+from ...plugins.webmetadata import ItemWrapper
 
 # get logging object
 log = logging.getLogger('beacon.webmetadata')
 
-class Plugin:
+class Plugin(object):
     """
     This is class is used as a namespace and is exposed to beacon.
     """
@@ -79,14 +80,31 @@ class Plugin:
             return None
         return None
 
+    @kaa.rpc.expose('webmetadata.sync')
+    @kaa.coroutine()
+    def sync(self):
+        log.info('sync web metadata')
+        for module in kaa.webmetadata.tv.backends.values() + kaa.webmetadata.movie.backends.values():
+            yield module.sync()
+        log.info('adjust items')
+        for item in (yield kaa.beacon.query(type='video')):
+            ItemWrapper(item).sync()
+            yield kaa.NotFinished
+
     @staticmethod
     def init(server, db):
         """
         Init the plugin.
         """
         plugin = Plugin()
-        kaa.webmetadata.init()
+
+        kaa.webmetadata.init(db.directory)
+
+        # TODO: schedule sync() every day and call on startup if it
+        # was not called in the last 24 hours
+
         beacon_register(None, plugin.parser)
         kaa.beacon.register_file_type_attrs('video',
             poster = (str, kaa.beacon.ATTR_SIMPLE),
             movie = (bool, kaa.beacon.ATTR_SEARCHABLE))
+        server.ipc.register(plugin)
