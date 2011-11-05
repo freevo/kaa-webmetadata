@@ -3,9 +3,7 @@ import kaa
 import kaa.metadata
 import kaa.beacon
 
-signals = kaa.Signals('changed')
-
-backends = []
+initialized = False
 
 WORKER_THREAD = 'WEBMETADATA'
 
@@ -18,58 +16,16 @@ import movie
 from tv.core import Series, Season, Episode
 from movie.core import Movie
 
-class BeaconItemWrapper(object):
-    def __init__(self, item):
-        self.item = item
-
-    def __setitem__(self, attr, value):
-        if isinstance(value, (str, unicode)) and value.startswith('http:'):
-            if not self.item[attr]:
-                self.item[attr] = value
-        elif self.item[attr] != value:
-            self.item[attr] = value
-
-    def sync(self):
-        if not self.item.filename:
-            return
-        metadata = parse(self.item.filename, self.item)
-        if not metadata:
-            return
-        self['title'] = metadata.name
-        self['description'] = metadata.overview
-        if isinstance(metadata, kaa.webmetadata.Episode):
-            self['series'] = metadata.series.name
-            self['image'] = metadata.image
-            self['poster'] = metadata.posters[0].url
-        if isinstance(metadata, kaa.webmetadata.Movie):
-            self['movie'] = True
-            if metadata.posters:
-                self['poster'] = metadata.posters[0].url
-        else:
-            self['movie'] = False
-        
-@kaa.coroutine()
-def init():
+def init(base):
     """
     Initialize the kaa.webmetadata databases
     """
-    if backends:
-        yield None
-    base = (yield kaa.beacon.get_db_info())['directory']
+    global initialized
+    if initialized:
+        return
     for module in tv, movie:
         module.init(base)
-        backends.extend(module.backends.values())
-    for backend in backends:
-        backend.signals['changed'].connect(signals['changed'].emit)
-
-def db_version():
-    """
-    Get database version
-    """
-    ver = 0
-    for module in backends:
-        ver += module.version
-    return ver
+    initialized = True
 
 def parse(filename, metadata=None):
     """
@@ -77,6 +33,8 @@ def parse(filename, metadata=None):
     metadata is None it will be created using kaa.metadata. Each
     dictionary-like object is allowed.
     """
+    if not initialized:
+        raise RuntimeError('kaa.webmetadata not initialized')
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series', None):
@@ -90,6 +48,8 @@ def search(filename, metadata=None):
     be created using kaa.metadata. Each dictionary-like object is
     allowed.
     """
+    if not initialized:
+        raise RuntimeError('kaa.webmetadata not initialized')
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series', None):
@@ -99,7 +59,7 @@ def search(filename, metadata=None):
     yield {}
 
 @kaa.coroutine()
-def match(filename, result, metadata=None):
+def match(self, filename, result, metadata=None):
     """
     Match the given filename with the id for future parsing. If
     metadata is None it will be created using kaa.metadata. Each
@@ -108,20 +68,13 @@ def match(filename, result, metadata=None):
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series'):
-        result = yield tv.add_series_by_search_result(result, alias=metadata.get('series'))
-        if result:
-            for item in (yield kaa.beacon.query(type='video', series=metadata.get('series'))):
-                BeaconItemWrapper(item).sync()
-    else:
-        result = yield movie.match(filename, result.id, metadata)
-    yield result
+        yield (yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series')))
+    yield (yield kaa.webmetadata.movie.match(filename, result.id, metadata))
 
 @kaa.coroutine()
 def sync():
     """
     Sync the databases with their web counterparts
     """
-    for module in backends:
+    for module in tv.backends.values() + movie.backends.values():
         yield module.sync()
-    for item in (yield kaa.beacon.query(type='video')):
-        BeaconItemWrapper(item).sync()
