@@ -15,7 +15,10 @@ class ItemWrapper(object):
     def sync(self):
         if not self.item.filename:
             return
-        metadata = kaa.webmetadata.parse(self.item.filename, self.item)
+        try:
+            metadata = kaa.webmetadata.parse(self.item.filename, self.item)
+        except Exception, e:
+            return
         if not metadata:
             return
         self['title'] = metadata.name
