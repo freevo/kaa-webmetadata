@@ -42,7 +42,7 @@ def search(filename, metadata=None, backend='themoviedb'):
     yield []
 
 @kaa.coroutine()
-def add_movie_by_search_result(filename, result, metadata=None):
+def add_movie_by_id(filename, id, metadata=None):
     """
     Match the given filename with the id for future parsing. If
     metadata is None it will be created using kaa.metadata. Each
@@ -54,4 +54,4 @@ def add_movie_by_search_result(filename, result, metadata=None):
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     metadata.filesize = os.path.getsize(filename)
-    yield (yield backends[parser].match(metadata, int(id)))
+    yield (yield backends[parser].add_movie_by_id(filename, metadata, int(id)))

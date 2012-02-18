@@ -62,7 +62,7 @@ class Plugin(object):
         metadata = kaa.webmetadata.parse(item.filename, attributes)
         if not attributes:
             attributes = item
-        if metadata:
+        if metadata and metadata.name:
             try:
                 attributes['movie'] = False
                 attributes['title'] = metadata.name

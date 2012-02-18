@@ -44,7 +44,7 @@ class SearchResult(object):
     pass
 
 @kaa.coroutine()
-def match(self, filename, result, metadata=None):
+def match(filename, result, metadata=None):
     """
     Match the given filename with the id for future parsing. If
     metadata is None it will be created using kaa.metadata. Each
@@ -52,6 +52,7 @@ def match(self, filename, result, metadata=None):
     """
     if not metadata:
         metadata = kaa.metadata.parse(filename)
+    metadata.filesize = os.path.getsize(filename)
     if metadata.get('series'):
         yield (yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series')))
     yield (yield kaa.webmetadata.movie.add_movie_by_id((metadata.get('hash'), metadata.filesize), result.id))
@@ -100,6 +101,7 @@ def main():
         if o == '--match':
             result = SearchResult()
             result.id, filename = args
+            metadata = kaa.metadata.parse(filename)
             if metadata.get('series'):
                 yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series'))
             else:

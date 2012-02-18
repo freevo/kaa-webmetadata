@@ -157,6 +157,8 @@ class MovieDB(core.Database):
         return results
 
     def parse(self, filename, metadata):
+        if not os.path.exists(filename):
+            return
         if metadata.get('hash'):
             data = self._db.query(
                 type='hash', value=u'%s|%s' % (metadata.get('hash'), os.path.getsize(filename)))
@@ -174,6 +176,8 @@ class MovieDB(core.Database):
 
     @kaa.coroutine()
     def search(self, filename, metadata):
+        if not os.path.exists(filename):
+            yield []
         apicall = 'http://api.themoviedb.org/2.1/%s/en/xml/' + self._apikey + '/%s'
         result = []
         imdb = None
@@ -196,8 +200,8 @@ class MovieDB(core.Database):
         yield result
 
     @kaa.coroutine()
-    def match(self, metadata, id):
-        if not metadata.get('hash'):
+    def add_movie_by_id(self, filename, metadata, id):
+        if not metadata.get('hash') or not metadata.get('filesize'):
             yield False
         self._db.add('hash', moviedb=id, value=u'%s|%s' % (metadata.get('hash'), metadata.filesize))
         self._db.commit()

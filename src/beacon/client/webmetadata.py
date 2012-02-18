@@ -20,7 +20,7 @@ class ItemWrapper(object):
             metadata = kaa.webmetadata.parse(self.item.filename, self.item)
         except Exception, e:
             return
-        if not metadata:
+        if not metadata or not metadata.name:
             return
         self['title'] = metadata.name
         self['description'] = metadata.overview
