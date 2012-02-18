@@ -82,15 +82,18 @@ class Plugin(object):
 
     @kaa.rpc.expose('webmetadata.sync')
     @kaa.coroutine()
-    def sync(self):
+    def sync(self, force=False):
         log.info('sync web metadata')
         for module in kaa.webmetadata.tv.backends.values() + kaa.webmetadata.movie.backends.values():
-            yield module.sync()
+            yield module.sync(force)
         log.info('adjust items')
         for item in (yield kaa.beacon.query(type='video')):
             ItemWrapper(item).sync()
             yield kaa.NotFinished
 
+    def _signal_sync(self, msg):
+        self.notify_client('webmetadata.signal_sync', msg)
+        
     @staticmethod
     def init(server, db):
         """
@@ -108,3 +111,5 @@ class Plugin(object):
             poster = (str, kaa.beacon.ATTR_SIMPLE),
             movie = (bool, kaa.beacon.ATTR_SEARCHABLE))
         server.ipc.register(plugin)
+        plugin.notify_client = server.notify_client
+        kaa.webmetadata.signals['sync'].connect(plugin._signal_sync)

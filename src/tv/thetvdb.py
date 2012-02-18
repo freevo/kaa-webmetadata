@@ -49,6 +49,7 @@ from kaa.saxutils import ElementParser
 import core
 
 from .. import opensubtitles
+from .. import signals
 
 # get logging object
 log = logging.getLogger('beacon.tvdb')
@@ -288,6 +289,11 @@ class TVDB(core.Database):
 
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
     def _update_series(self, id):
+        info = self._db.query_one(type='series', tvdb=id)
+        if info:
+            signals['sync'].emit(info.get('name'))
+        else:
+            signals['sync'].emit()
         f = open(kaa.tempfile('thetvdb-%s.zip' % id), 'w')
         f.write((yield download(self.api + 'series/%s/all/en.zip' % id)))
         f.close()

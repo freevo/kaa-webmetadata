@@ -44,14 +44,43 @@ class SearchResult(object):
     pass
 
 @kaa.coroutine()
+def match(self, filename, result, metadata=None):
+    """
+    Match the given filename with the id for future parsing. If
+    metadata is None it will be created using kaa.metadata. Each
+    dictionary-like object is allowed.
+    """
+    if not metadata:
+        metadata = kaa.metadata.parse(filename)
+    if metadata.get('series'):
+        yield (yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series')))
+    yield (yield kaa.webmetadata.movie.add_movie_by_id((metadata.get('hash'), metadata.filesize), result.id))
+
+@kaa.coroutine()
+def search(filename, metadata=None):
+    """
+    Search the given filename in the web. If metadata is None it will
+    be created using kaa.metadata. Each dictionary-like object is
+    allowed.
+    """
+    if not metadata:
+        metadata = kaa.metadata.parse(filename)
+    if metadata.get('series', None):
+        yield (yield kaa.webmetadata.tv.search(filename, metadata))
+    yield (yield kaa.webmetadata.movie.search(filename, metadata))
+
+@kaa.coroutine()
 def main():
     yield kaa.beacon.connect()
 
-    opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'search', 'match', 'guess' ])
+    opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'full-sync', 'search', 'match', 'guess' ])
     for o, a in opts:
-        if o == '--sync':
+        if o in ('--sync', '--full-sync'):
+            def status(name=None):
+                print 'sync', name
             # Sync the db. Call this every day or so
-            yield kaa.webmetadata.sync()
+            kaa.webmetadata.signals['sync'].connect(status)
+            yield kaa.webmetadata.sync(force=(o=='--full-sync'))
             sys.exit(0)
 
         if o == '--search':
@@ -59,8 +88,8 @@ def main():
             for filename in args:
                 print 'Trying to find information for', os.path.basename(filename)
                 metadata = kaa.metadata.parse(filename)
-                result = yield kaa.webmetadata.tv.search(filename)
-                if len(result) == 0:
+                result = yield search(filename)
+                if not result:
                     print 'error: unable to get any additional information'
                     sys.exit(0)
                 if result:
@@ -71,7 +100,10 @@ def main():
         if o == '--match':
             result = SearchResult()
             result.id, filename = args
-            yield kaa.webmetadata.match(filename, result)
+            if metadata.get('series'):
+                yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series'))
+            else:
+                yield kaa.webmetadata.movie.add_movie_by_id((metadata.get('hash'), metadata.filesize), result.id)
             # sleep 0.2 seconds for the db to sync
             yield kaa.delay(0.2)
             sys.exit(0)
@@ -83,10 +115,10 @@ def main():
                 if not kaa.webmetadata.parse(item.filename, item):
                     print item.filename,
                     sys.stdout.flush()
-                    result = yield kaa.webmetadata.search(item.filename, item)
+                    result = yield search(item.filename, item)
                     if len(result) == 1:
                         print 'found'
-                        yield kaa.webmetadata.match(item.filename, result[0])
+                        yield match(item.filename, result[0])
                     else:
                         print 'failure'
             sys.exit(0)

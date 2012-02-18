@@ -16,6 +16,8 @@ import movie
 from tv.core import Series, Season, Episode
 from movie.core import Movie
 
+signals = kaa.Signals('sync')
+
 def init(base):
     """
     Initialize the kaa.webmetadata databases
@@ -59,22 +61,9 @@ def search(filename, metadata=None):
     yield {}
 
 @kaa.coroutine()
-def match(self, filename, result, metadata=None):
-    """
-    Match the given filename with the id for future parsing. If
-    metadata is None it will be created using kaa.metadata. Each
-    dictionary-like object is allowed.
-    """
-    if not metadata:
-        metadata = kaa.metadata.parse(filename)
-    if metadata.get('series'):
-        yield (yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series')))
-    yield (yield kaa.webmetadata.movie.match(filename, result.id, metadata))
-
-@kaa.coroutine()
-def sync():
+def sync(force=False):
     """
     Sync the databases with their web counterparts
     """
     for module in tv.backends.values() + movie.backends.values():
-        yield module.sync()
+        yield module.sync(force)

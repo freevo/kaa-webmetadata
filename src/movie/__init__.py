@@ -26,6 +26,7 @@ def parse(filename, metadata=None):
         if info:
             return info
 
+@kaa.coroutine()
 def search(filename, metadata=None, backend='themoviedb'):
     """
     Search the given filename in the web. If metadata is None it will
@@ -33,13 +34,15 @@ def search(filename, metadata=None, backend='themoviedb'):
     allowed.
     """
     if not backend in backends:
-        return None
+        yield []
     if not metadata:
         metadata = kaa.metadata.parse(filename)
-    return backends[backend].search(filename, metadata)
+    if metadata['length'] and metadata['length'] > 60 * 60: # at least one hour
+        yield (yield backends[backend].search(filename, metadata))
+    yield []
 
 @kaa.coroutine()
-def match(filename, id, metadata=None):
+def add_movie_by_search_result(filename, result, metadata=None):
     """
     Match the given filename with the id for future parsing. If
     metadata is None it will be created using kaa.metadata. Each
@@ -52,4 +55,3 @@ def match(filename, id, metadata=None):
         metadata = kaa.metadata.parse(filename)
     metadata.filesize = os.path.getsize(filename)
     yield (yield backends[parser].match(metadata, int(id)))
-

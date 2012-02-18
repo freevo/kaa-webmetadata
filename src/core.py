@@ -104,7 +104,7 @@ class Database(MediaInfo):
         open(self._versionfile, 'w').write(str(self.version))
 
     @kaa.coroutine()
-    def sync(self):
+    def sync(self, force=False):
         yield None
 
     def get_metadata(self, key):

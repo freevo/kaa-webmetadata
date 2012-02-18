@@ -1,3 +1,4 @@
+import kaa.beacon
 import kaa.metadata
 import kaa.webmetadata
 
@@ -37,50 +38,21 @@ class Plugin(object):
         kaa.webmetadata.init(client.get_db_info()['directory'])
         self.client = client
 
-    def parse(filename, metadata=None):
-        """
-        Parse the given filename and return information from the db. If
-        metadata is None it will be created using kaa.metadata. Each
-        dictionary-like object is allowed.
-        """
-        return kaa.webmetadata.parse(filename, metadata)
-
-    def search(self, filename, metadata=None):
-        """
-        Search the given filename in the web. If metadata is None it will
-        be created using kaa.metadata. Each dictionary-like object is
-        allowed.
-        """
-        return kaa.webmetadata.search(filename, metadata)
-
     @kaa.coroutine()
-    def match(self, filename, result, metadata=None):
-        """
-        Match the given filename with the id for future parsing. If
-        metadata is None it will be created using kaa.metadata. Each
-        dictionary-like object is allowed.
-        """
-        if not metadata:
-            metadata = kaa.metadata.parse(filename)
-        if metadata.get('series'):
-            result = yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series'))
-            if result:
-                for item in (yield self.client.query(type='video', series=metadata.get('series'))):
-                    ItemWrapper(item).sync()
-        else:
-            result = yield kaa.webmetadata.movie.match(filename, result.id, metadata)
-        yield result
-
-    @kaa.coroutine()
-    def sync(self):
-        yield self.client.rpc('webmetadata.sync')
+    def sync(self, force=False):
+        yield self.client.rpc('webmetadata.sync', force=force)
         for item in (yield self.client.query(type='video')):
             ItemWrapper(item).sync()
             yield kaa.NotFinished
 
+    @kaa.rpc.expose('webmetadata.signal_sync')
+    def _signal_sync(self, msg):
+        if not kaa.beacon.is_server():
+            kaa.webmetadata.signals['sync'].emit(msg)
+
     @staticmethod
     def init(client):
         plugin = Plugin(client)
-        for func in ('match', 'sync'):
-            setattr(kaa.webmetadata, func, getattr(plugin, func))
+        kaa.webmetadata.sync = plugin.sync
+        client.channel.register(plugin)
         return dict(webmetadata=plugin)
