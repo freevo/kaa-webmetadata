@@ -73,6 +73,7 @@ def search(filename, metadata=None):
 @kaa.coroutine()
 def main():
     yield kaa.beacon.connect()
+    kaa.webmetadata.init((yield kaa.beacon.get_db_info())['directory'])
 
     opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'full-sync', 'search', 'match', 'guess' ])
     for o, a in opts:
