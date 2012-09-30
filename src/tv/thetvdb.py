@@ -100,6 +100,10 @@ class Episode(core.Episode):
         else:
             self.image = None
 
+    @property
+    def imdb(self):
+        return self._dbrow['data'].get('IMDB_ID')
+
 
 class Season(core.Season):
     """
@@ -222,6 +226,10 @@ class Series(core.Series):
     @property
     def banner(self):
         return self._get_banner(u'series')
+
+    @property
+    def imdb(self):
+        return self._dbrow['data'].get('IMDB_ID')
 
 
 class SearchResult(core.Series):
