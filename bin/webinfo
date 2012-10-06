@@ -103,10 +103,11 @@ def main():
             result = SearchResult()
             result.id, filename = args
             metadata = kaa.metadata.parse(filename)
+            metadata.filesize = os.path.getsize(filename)
             if metadata.get('series'):
                 yield kaa.webmetadata.tv.add_series_by_search_result(result, alias=metadata.get('series'))
             else:
-                yield kaa.webmetadata.movie.add_movie_by_id((metadata.get('hash'), metadata.filesize), result.id)
+                yield kaa.webmetadata.movie.add_movie_by_id(filename, result.id, metadata)
             # sleep 0.2 seconds for the db to sync
             yield kaa.delay(0.2)
             sys.exit(0)
