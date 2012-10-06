@@ -34,6 +34,7 @@ __all__ = [ 'MovieDB' ]
 # python imports
 import os
 import re
+import time
 import xml.sax
 import logging
 import socket
@@ -47,8 +48,6 @@ from kaa.saxutils import ElementParser, Element
 
 import core
 
-from .. import opensubtitles
-
 # get logging object
 log = logging.getLogger('webmetadata')
 
@@ -59,13 +58,13 @@ WORKER_THREAD = 'WEBMETADATA'
 
 IMDB_REGEXP = re.compile('http://[a-z\.]*imdb.[a-z]+/[a-z/]+([0-9]+)')
 IMAGE_REGEXP = re.compile('.*/([0-9]*)/')
+TITLE_REGEXP = re.compile('(.*?)[\._\- ]([0-9]{4})[\._\- ].*')
 
 class Movie(core.Movie):
     """
     Movie Information.
     """
     def __init__(self, data):
-        super(Movie, self).__init__()
         self._data = data
         self.id = 'themoviedb:%s' % data['id']
         self.name = data['name']
@@ -73,11 +72,9 @@ class Movie(core.Movie):
         self.rating = data.get('rating')
         self.runtime = data.get('runtime')
         self.year = None
+        self.imdb = data.get('imdb_id')
         if data.get('released') and len(data.get('released').split('-')) == 3:
             self.year = data.get('released').split('-')[0]
-        # FIXME: add more stuff. The details also include new
-        # information Maybe a self.update() function could be used to
-        # move from search result to detailed info
 
     def _images(self, tagname, size):
         result = []
@@ -150,60 +147,84 @@ class MovieDB(core.Database):
         e.handle = handle
         parser = xml.sax.make_parser()
         parser.setContentHandler(e)
-        try:
-            parser.parse(urllib2.urlopen(url, timeout=10))
-        except Exception, e:
-            log.exception('download/parse error')
-            return []
+        parser.parse(urllib2.urlopen(url, timeout=10))
+        # request limit: 10 requests every 10 seconds per
+        # IP. Just wait one second here we are OK
+        time.sleep(1)
         return results
 
     def parse(self, filename, metadata):
         if not os.path.exists(filename):
             return
+        data = []
+        # search based on the movie hash
         if metadata.get('hash'):
-            data = self._db.query(
-                type='hash', value=u'%s|%s' % (metadata.get('hash'), os.path.getsize(filename)))
+            hash = u'%s|%s' % (metadata.get('hash'), os.path.getsize(filename))
+            data = self._db.query(type='hash', value=hash)
             if data:
                 data = self._db.query(type='movie', moviedb=data[0]['moviedb'])
-                return Movie(data[0]['data'])
-        nfo = os.path.splitext(filename)[0] + '.nfo'
-        if os.path.exists(nfo):
-            match = IMDB_REGEXP.search(open(nfo).read())
-            if match:
-                data = self._db.query(type='movie', imdb=u'tt' + match.groups()[0])
-                if data:
-                    return Movie(data[0]['data'])
-        return None
+        # search based on imdb id in nfo file
+        if not data:
+            nfo = os.path.splitext(filename)[0] + '.nfo'
+            if os.path.exists(nfo):
+                match = IMDB_REGEXP.search(open(nfo).read())
+                if match:
+                    data = self._db.query(type='movie', imdb=u'tt' + match.groups()[0])
+        # not found
+        if not data:
+            return None
+        # return result
+        return Movie(data[0]['data'])
 
-    @kaa.coroutine()
+    @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
     def search(self, filename, metadata):
         if not os.path.exists(filename):
             yield []
         apicall = 'http://api.themoviedb.org/2.1/%s/en/xml/' + self._apikey + '/%s'
         result = []
-        imdb = None
         nfo = os.path.splitext(filename)[0] + '.nfo'
         if os.path.exists(nfo) and not result:
             match = IMDB_REGEXP.search(open(nfo).read())
-            if match: imdb = match.groups()[0]
-        if not imdb: 
-            try:
-                imdb = (yield opensubtitles.search(filename, metadata))
-            except Exception, e:
-                log.exception('opensubtitles error')
-        if imdb:
-            url = apicall % ('Movie.imdbLookup', 'tt' + imdb)
-            result = yield self.download(url)
-        for movie in result:
-            self._db.add('movie', moviedb=int(movie._data['id']), name=movie.name,
-                imdb=movie._data.get('imdb_id', ''), data=movie._data)
-        self._db.commit()
+            if match:
+                url = apicall % ('Movie.imdbLookup', 'tt' + match.groups()[0])
+                result = yield self.download(url)
+                for movie in result:
+                    movie.likely = True
+        if not result:
+            # try guessing title and year
+            m = TITLE_REGEXP.match(os.path.basename(filename))
+            if m:
+                name, year = m.groups()
+                if int(year) > 1900 and int(year) <= time.localtime().tm_year:
+                    # valid year
+                    name = name.lower().replace('.', ' ').replace('-', ' ').replace('_', ' ')
+                    url = apicall % ('Movie.search', urllib.quote('%s+%s' % (name, year)))
+                    result = yield self.download(url)
+                    for movie in result:
+                        # mark the best matches
+                        if movie.name.lower().replace('.', ' ').replace('-', ' ').replace('_', ' ') == name:
+                            movie.likely = True
+                        else:
+                            movie.likely = False
         yield result
 
     @kaa.coroutine()
     def add_movie_by_id(self, filename, metadata, id):
         if not metadata.get('hash') or not metadata.get('filesize'):
             yield False
-        self._db.add('hash', moviedb=id, value=u'%s|%s' % (metadata.get('hash'), metadata.filesize))
-        self._db.commit()
+        # check if we already have that movie in the db
+        data = self._db.query(type='movie', moviedb=id)
+        if not data:
+            # get information
+            apicall = 'http://api.themoviedb.org/2.1/%s/en/xml/' + self._apikey + '/%s'
+            url = apicall % ('Movie.getInfo', id)
+            result = yield self.download(url)
+            if result:
+                self._db.add('movie', moviedb=int(result[0]._data['id']), name=result[0].name,
+                    imdb=result[0]._data.get('imdb_id', u''), data=result[0]._data)
+                self._db.commit()
+                data = self._db.query(type='movie', moviedb=id)
+        if data:
+            self._db.add('hash', moviedb=id, value=u'%s|%s' % (metadata.get('hash'), metadata.filesize))
+            self._db.commit()
         yield True
