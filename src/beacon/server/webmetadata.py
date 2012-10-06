@@ -47,6 +47,7 @@ from ..parser import register as beacon_register
 log = logging.getLogger('beacon.webmetadata')
 
 SYNC_INTERVAL = 24 * 60 * 60    # every 24 hours
+PLUGIN_VERSION = 0.1
 
 class Plugin(object):
     """
@@ -57,15 +58,87 @@ class Plugin(object):
         """
         Set a new value. Only trigger the setter if the value changed
         """
-        if attributes[attr] == value:
+        if attributes.get(attr) == value:
             # nothing changed
             return
-        if value.startswith('http://') and attributes[attr] == self.db.md5url(value, 'images'):
-            # image already stored to disk
-            return
+        if isinstance(value, (str, unicode)) and value.startswith('http://'):
+            if attributes.get(attr) == self.db.md5url(value, 'images'):
+                # image already stored to disk
+                return
+            if attr == 'image' and attributes.get('thumbnail'):
+                # hack: request a thumbnail here to force downloading
+                t = attributes.get('thumbnail')
+                t.create(t.PRIORITY_LOW)
+                return
         # changed value
         attributes[attr] = value
 
+    @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
+    def guess_metadata(self, filename):
+        """
+        Guess metadata based on filename and attributes
+        """
+        try:
+            attributes = (yield kaa.beacon.get(filename))
+        except Exception, e:
+            # something is wrong here, maybe the item does not exist
+            # anymore.
+            yield None
+        series = attributes.get('series', None)
+        if series:
+            log.info('guess %s', filename)
+            result = (yield kaa.webmetadata.tv.search(filename, attributes))
+            # mark file as guessed
+            attributes['webmetadata'] = filename
+            if len(result) == 1:
+                # only one result, this has to be a match
+                yield kaa.webmetadata.tv.add_series_by_search_result(result[0], alias=series)
+                # now that we have data run set_metadata again
+                self.set_metadata(filename, attributes)
+            yield None
+        if not attributes.get('length') or attributes.get('length') < 60 * 60:
+            # less than an hour does not look like a movie
+            yield None
+        # we use the movie hash here. Therefore, the file should
+        # be finished downloading or copying. This slows us down,
+        # but it is the guessing part that runs in the background
+        # anyway.
+        try:
+            filesize = os.path.getsize(filename)
+            yield kaa.delay(5)
+            if filesize != os.path.getsize(filename):
+                # still growing, we do not want to handle this
+                # file. Beacon will catch it again and we will be
+                # here again.
+                yield None
+        except OSError:
+            # file is deleted while we were checking
+            yield None
+        # check the movie database
+        log.info('guess %s', filename)
+        try:
+            result = yield kaa.webmetadata.movie.search(filename, attributes)
+        except Exception, e:
+            # something went wrong, maybe we have more luck next time
+            log.exception('kaa.webmetadata.movie.search')
+            yield None
+        # mark file as guessed
+        attributes['webmetadata'] = filename
+        if len(result) > 1:
+            # too many results, maybe only one is likely
+            result = [ r for r in result if r.likely ]
+        if len(result) == 1:
+            # only one result, this has to be a match
+            try:
+                yield kaa.webmetadata.movie.add_movie_by_id(filename, result[0].id)
+            except Exception, e:
+                # something went wrong, maybe we have more luck next time
+                log.exception('kaa.webmetadata.movie.search')
+                attributes['webmetadata'] = ''
+                yield None
+            # now that we have data run set_metadata again
+            self.set_metadata(filename, attributes)
+        yield None
 
     def set_metadata(self, filename, attributes):
         """
@@ -81,8 +154,12 @@ class Plugin(object):
             return
         if not metadata or not metadata.name:
             # no metadata exists
+            if not attributes.get('webmetadata') or filename != attributes.get('webmetadata'):
+                # either never guessed or the filename changed
+                self.guess_metadata(filename)
             return
         try:
+            self.set_attribute(attributes, 'webmetadata', filename)
             self.set_attribute(attributes, 'title', metadata.name)
             self.set_attribute(attributes, 'description', metadata.overview)
             if isinstance(metadata, kaa.webmetadata.Episode):
@@ -134,6 +211,13 @@ class Plugin(object):
         """
         Check if the database requires a sync
         """
+        if float(self.db.get_metadata('webmetadata::version', 0)) != PLUGIN_VERSION:
+            log.info('force webmetadata resync')
+            # force a complete resync here
+            for item in (yield kaa.beacon.query(type='video')):
+                item['webmetadata'] = ''
+            self.db.set_metadata('webmetadata::lastsync', 0)
+            self.db.set_metadata('webmetadata::version', PLUGIN_VERSION)
         while True:
             last = int(self.db.get_metadata('webmetadata::lastsync', 0))
             if time.time() + 10 < last + SYNC_INTERVAL:
@@ -148,7 +232,7 @@ class Plugin(object):
                 # something else. Try again in 60 seconds
                 yield kaa.delay(60)
 
-    def _signal_sync(self, msg):
+    def _signal_sync(self, msg=None):
         """
         Signal handler with the current status of the sync. The signal
         will be forwarded to all clients.
@@ -166,6 +250,7 @@ class Plugin(object):
 
         beacon_register(None, plugin.parser)
         kaa.beacon.register_file_type_attrs('video',
+            webmetadata = (str, kaa.beacon.ATTR_SIMPLE),
             imdb = (str, kaa.beacon.ATTR_SIMPLE),
             poster = (str, kaa.beacon.ATTR_SIMPLE),
             movie = (bool, kaa.beacon.ATTR_SEARCHABLE))
