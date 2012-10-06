@@ -65,6 +65,7 @@ class Movie(core.Movie):
     Movie Information.
     """
     def __init__(self, data):
+        super(Movie, self).__init__()
         self._data = data
         self.id = 'themoviedb:%s' % data['id']
         self.name = data['name']

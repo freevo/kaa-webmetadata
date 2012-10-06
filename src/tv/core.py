@@ -2,7 +2,7 @@ from ..core import Entry, Image, Database, WORKER_THREAD
 
 class Series(Entry):
 
-    _keys = ['name', 'overview', 'year' ]
+    _keys = ['name', 'overview', 'year', 'imdb' ]
 
     posters = []
 
@@ -24,7 +24,7 @@ class Season(Entry):
 
 class Episode(Entry):
 
-    _keys = ['series', 'season', 'number', 'name', 'overview', 'image' ]
+    _keys = ['series', 'season', 'number', 'name', 'overview', 'image', 'imdb' ]
 
     @property
     def posters(self):

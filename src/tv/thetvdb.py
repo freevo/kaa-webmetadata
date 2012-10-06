@@ -94,15 +94,12 @@ class Episode(core.Episode):
         self.season = season
         self.number = dbrow['data'].get('EpisodeNumber')
         self.name = dbrow['name']
+        self.imdb = dbrow['data'].get('IMDB_ID')
         self.overview = dbrow['data'].get('Overview')
         if dbrow['data'].get('filename'):
             self.image = self.tvdb.hostname + '/banners/' + dbrow['data']['filename']
         else:
             self.image = None
-
-    @property
-    def imdb(self):
-        return self._dbrow['data'].get('IMDB_ID')
 
 
 class Season(core.Season):
@@ -168,6 +165,7 @@ class Series(core.Series):
         self.name = dbrow['name']
         self.id = dbrow['id']
         self.tvdb = tvdb
+        self.imdb = dbrow['data'].get('IMDB_ID')
         self.overview = dbrow['data'].get('Overview')
 
     @property
@@ -226,10 +224,6 @@ class Series(core.Series):
     @property
     def banner(self):
         return self._get_banner(u'series')
-
-    @property
-    def imdb(self):
-        return self._dbrow['data'].get('IMDB_ID')
 
 
 class SearchResult(core.Series):
