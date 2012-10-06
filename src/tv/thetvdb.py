@@ -138,7 +138,10 @@ class Season(core.Season):
             raise ValueError('Highest episode # is %d which is unexpectedly high' % highest)
         self._episode_cache = [None for i in range(highest)]
         for ep in episodes:
-            self._episode_cache[int(ep.number)-1] = ep
+            if int(ep.number):
+                # if ep.number is 0 it is some kind of special episode
+                # we cannot handle here
+                self._episode_cache[int(ep.number)-1] = ep
         self._episode_cache_ver = self.tvdb.version
         return self._episode_cache
 
