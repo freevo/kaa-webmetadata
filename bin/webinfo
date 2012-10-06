@@ -75,7 +75,7 @@ def main():
     yield kaa.beacon.connect()
     kaa.webmetadata.init((yield kaa.beacon.get_db_info())['directory'])
 
-    opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'full-sync', 'search', 'match', 'guess' ])
+    opts, args = getopt.gnu_getopt(sys.argv[1:], '', ['sync', 'full-sync', 'search', 'match' ])
     for o, a in opts:
         if o in ('--sync', '--full-sync'):
             def status(name=None):
@@ -110,21 +110,6 @@ def main():
                 yield kaa.webmetadata.movie.add_movie_by_id(filename, result.id, metadata)
             # sleep 0.2 seconds for the db to sync
             yield kaa.delay(0.2)
-            sys.exit(0)
-
-        if o == '--guess':
-            for item in (yield kaa.beacon.query(type='video')):
-                if not item.filename:
-                    continue
-                if not kaa.webmetadata.parse(item.filename, item):
-                    print item.filename,
-                    sys.stdout.flush()
-                    result = yield search(item.filename, item)
-                    if len(result) == 1:
-                        print 'found'
-                        yield match(item.filename, result[0])
-                    else:
-                        print 'failure'
             sys.exit(0)
 
     for filename in args:
