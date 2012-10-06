@@ -376,15 +376,6 @@ class TVDB(core.Database):
         for name, data in (yield parse(url))[1]:
             result.append(SearchResult('thetvdb:' + data['seriesid'], data['SeriesName'],
                 data.get('Overview', None), data.get('FirstAired', None), data.get('IMDB_ID')))
-        if len(result) > 1 and filename and metadata:
-            log.info('try imdb to get a better idea about the show\'s name')
-            try:
-                imdb = (yield opensubtitles.search(filename, metadata))
-                for r in result:
-                    if 'tt%s' % imdb == r.imdb:
-                        yield [ r ]
-            except Exception, e:
-                log.exception('opensubtitles error')
         yield result
 
     @kaa.coroutine()
