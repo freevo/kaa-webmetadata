@@ -54,6 +54,8 @@ class Plugin(object):
     This is class is used as a namespace and is exposed to beacon.
     """
 
+    guessing = []
+
     def set_attribute(self, attributes, attr, value):
         """
         Set a new value. Only trigger the setter if the value changed
@@ -78,6 +80,8 @@ class Plugin(object):
         """
         Guess metadata based on filename and attributes
         """
+        if filename in self.guessing:
+            self.guessing.remove(filename)
         try:
             attributes = (yield kaa.beacon.get(filename))
         except Exception, e:
@@ -156,7 +160,14 @@ class Plugin(object):
             # no metadata exists
             if not attributes.get('webmetadata') or filename != attributes.get('webmetadata'):
                 # either never guessed or the filename changed
-                self.guess_metadata(filename)
+                if not filename in self.guessing:
+                    # remember that we want to guess the filename in
+                    # case the file is growing. In that case various
+                    # guess_metadata calls may queue themselves
+                    # because guess_metadata may take several seconds
+                    # and has POLICY_SYNCHRONIZED.
+                    self.guessing.append(filename)
+                    self.guess_metadata(filename)
             return
         try:
             self.set_attribute(attributes, 'webmetadata', filename)
