@@ -82,6 +82,8 @@ class Plugin(object):
         """
         if filename in self.guessing:
             self.guessing.remove(filename)
+        # Slow down guessing and make sure the file is in sync in the database
+        yield kaa.delay(1)
         try:
             attributes = (yield kaa.beacon.get(filename))
         except Exception, e:
