@@ -1,0 +1,18 @@
+o beacon
+  - update all files for new match_file_by_XXX
+  - add banner to beacon or move poster and banner
+    to a webmetadata attribute / link. Maybe return
+    a webmetadata object somehow for additional information
+    from the specific metadata db.
+o thetvdb
+  - expose genre, year, etc
+  - season poster support in beacon
+o themoviedb
+  - move to higher API version once IMDB search is
+    provided by the new API
+  - trailer support
+o audio
+  - add http://acoustid.org/fingerprinter support
+    (only manual scan, no auto-guessing)
+o more sources:
+  - fanart.tv (tv, movie, audio)
