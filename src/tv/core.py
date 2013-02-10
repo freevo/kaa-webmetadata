@@ -4,8 +4,10 @@ class Series(Entry):
 
     _keys = ['name', 'overview', 'year', 'imdb' ]
 
-    posters = []
-
+    image = None
+    poster = None
+    banner = None
+    
     def __str__(self):
         return str(self.name)
 
@@ -18,8 +20,16 @@ class Season(Entry):
         return str(self.number)
 
     @property
-    def posters(self):
-        return self.series.posters
+    def image(self):
+        return self.series.image
+
+    @property
+    def poster(self):
+        return self.series.poster
+
+    @property
+    def banner(self):
+        return self.series.banner
 
 
 class Episode(Entry):
@@ -27,6 +37,14 @@ class Episode(Entry):
     _keys = ['series', 'season', 'number', 'name', 'overview', 'image', 'imdb' ]
 
     @property
-    def posters(self):
-        return self.season.posters
+    def image(self):
+        return self.series.image
+
+    @property
+    def poster(self):
+        return self.series.poster
+
+    @property
+    def banner(self):
+        return self.series.poster
 
