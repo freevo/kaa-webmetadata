@@ -41,10 +41,7 @@ def search(filename, metadata=None, backend='thetvdb'):
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series', None):
-        result = backends[backend].get_entry_from_metadata(metadata)
-        if not result:
-            # The series is not known in the database
-            return backends[backend].search(metadata.get('series'), filename, metadata)
+        return backends[backend].search(metadata.get('series'), filename, metadata)
     return None
 
 @kaa.coroutine()
