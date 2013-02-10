@@ -4,7 +4,7 @@ import kaa.metadata
 
 backends = {}
 
-def init(base='~/.beacon'):
+def init(base):
     """
     Initialize the kaa.webmetadata databases
     """
