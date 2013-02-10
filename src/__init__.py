@@ -37,6 +37,8 @@ def parse(filename, metadata=None):
     """
     if not initialized:
         raise RuntimeError('kaa.webmetadata not initialized')
+    if not os.path.isfile(filename):
+        return None
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series', None):
@@ -52,6 +54,8 @@ def search(filename, metadata=None):
     """
     if not initialized:
         raise RuntimeError('kaa.webmetadata not initialized')
+    if not os.path.isfile(filename):
+        yield {}
     if not metadata:
         metadata = kaa.metadata.parse(filename)
     if metadata.get('series', None):
