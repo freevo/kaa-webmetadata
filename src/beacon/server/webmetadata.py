@@ -55,6 +55,7 @@ class Plugin(object):
     """
 
     guessing = []
+    guessing_failed = []
 
     def set_attribute(self, attributes, attr, value):
         """
@@ -76,22 +77,38 @@ class Plugin(object):
         attributes[attr] = value
 
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
-    def guess_metadata(self, filename):
+    def guess_metadata(self, filename, timestamp):
         """
         Guess metadata based on filename and attributes
         """
-        if filename in self.guessing:
-            self.guessing.remove(filename)
+        if not filename in self.guessing:
+            # already done
+            yield None
+        self.guessing.remove(filename)
         # Slow down guessing and make sure the file is in sync in the database
-        yield kaa.delay(1)
+        if timestamp + 1 > time.time():
+            log.info('wait for database sync')
+            yield kaa.delay(1)
         try:
             attributes = (yield kaa.beacon.get(filename))
         except Exception, e:
             # something is wrong here, maybe the item does not exist
             # anymore.
             yield None
+        try:
+            metadata = kaa.webmetadata.parse(filename)
+        except Exception, e:
+            # Something went wrong here
+            yield None
+        if metadata and metadata.name:
+            # Result from previous guessing (e.g. tv series)
+            self.set_metadata(filename, attributes)
+            yield None
         series = attributes.get('series', None)
         if series:
+            if series in self.guessing_failed:
+                log.info('skip guessing %s', filename)
+                yield None
             log.info('guess %s', filename)
             result = (yield kaa.webmetadata.tv.search(filename, attributes))
             # mark file as guessed
@@ -101,6 +118,7 @@ class Plugin(object):
                 yield kaa.webmetadata.tv.add_series_by_search_result(result[0], alias=series)
                 # now that we have data run set_metadata again
                 self.set_metadata(filename, attributes)
+            self.guessing_failed.append(series)
             yield None
         if not attributes.get('length') or attributes.get('length') < 60 * 60:
             # less than an hour does not look like a movie
@@ -169,7 +187,7 @@ class Plugin(object):
                     # because guess_metadata may take several seconds
                     # and has POLICY_SYNCHRONIZED.
                     self.guessing.append(filename)
-                    self.guess_metadata(filename)
+                    self.guess_metadata(filename, time.time())
             return
         try:
             self.set_attribute(attributes, 'webmetadata', filename)
@@ -187,7 +205,7 @@ class Plugin(object):
             if isinstance(metadata, kaa.webmetadata.Movie):
                 self.set_attribute(attributes, 'imdb', metadata.imdb)
                 self.set_attribute(attributes, 'movie', True)
-                if metadata.posters:
+                if metadata.poster:
                     self.set_attribute(attributes, 'poster', metadata.poster)
         except Exception, e:
             log.exception('webmetadata assign error')
