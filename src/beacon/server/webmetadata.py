@@ -47,7 +47,7 @@ from ..parser import register as beacon_register
 log = logging.getLogger('beacon.webmetadata')
 
 SYNC_INTERVAL = 24 * 60 * 60    # every 24 hours
-PLUGIN_VERSION = 0.1
+PLUGIN_VERSION = 0.2
 
 class Plugin(object):
     """
@@ -179,7 +179,7 @@ class Plugin(object):
                 self.set_attribute(attributes, 'movie', False)
                 self.set_attribute(attributes, 'series', metadata.series.name)
                 self.set_attribute(attributes, 'image', metadata.image)
-                self.set_attribute(attributes, 'poster', metadata.posters[0].url)
+                self.set_attribute(attributes, 'poster', metadata.poster)
                 if metadata.imdb:
                     self.set_attribute(attributes, 'imdb', metadata.imdb)
                 else:
@@ -188,7 +188,7 @@ class Plugin(object):
                 self.set_attribute(attributes, 'imdb', metadata.imdb)
                 self.set_attribute(attributes, 'movie', True)
                 if metadata.posters:
-                    self.set_attribute(attributes, 'poster', metadata.posters[0].url)
+                    self.set_attribute(attributes, 'poster', metadata.poster)
         except Exception, e:
             log.exception('webmetadata assign error')
 
