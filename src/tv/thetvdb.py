@@ -171,13 +171,13 @@ class Season(core.Season):
     @property
     def poster(self):
         if self.get_all_posters():
-            return '%s/%s.poster.%02d.jpg' % (self.tvdb.imagedir, self.series.name, self.number)
+            return '%s/%s.poster.%02d.jpg' % (self.tvdb.imagedir, self.series._dbrow['tvdb'], self.number)
         return self.series.poster
 
     @property
     def banner(self):
         if self.get_all_banners():
-            return '%s/%s.banner.%02d.jpg' % (self.tvdb.imagedir, self.series.name, self.number)
+            return '%s/%s.banner.%02d.jpg' % (self.tvdb.imagedir, self.series._dbrow['tvdb'], self.number)
         return self.series.banner
 
 
@@ -267,7 +267,7 @@ class Series(core.Series):
         Path in the local filesystem were the background image is stored
         """
         if self.get_all_images():
-            return '%s/%s.image.jpg' % (self.tvdb.imagedir, self.name)
+            return '%s/%s.image.jpg' % (self.tvdb.imagedir, self._dbrow['tvdb'])
 
     @property
     def poster(self):
@@ -275,7 +275,7 @@ class Series(core.Series):
         Path in the local filesystem were the poster image is stored
         """
         if self.get_all_posters():
-            return '%s/%s.poster.jpg' % (self.tvdb.imagedir, self.name)
+            return '%s/%s.poster.jpg' % (self.tvdb.imagedir, self._dbrow['tvdb'])
 
     @property
     def banner(self):
@@ -283,7 +283,7 @@ class Series(core.Series):
         Path in the local filesystem were the banner image is stored
         """
         if self.get_all_banners():
-            return '%s/%s.banner.jpg' % (self.tvdb.imagedir, self.name)
+            return '%s/%s.banner.jpg' % (self.tvdb.imagedir, self._dbrow['tvdb'])
 
 
 class SearchResult(core.Series):
