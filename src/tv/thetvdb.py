@@ -2,11 +2,8 @@
 # -----------------------------------------------------------------------------
 # tvdb.py - TVDB Database
 # -----------------------------------------------------------------------------
-# $Id$
-#
-# -----------------------------------------------------------------------------
 # kaa.webmetadata - Receive Metadata from the Web
-# Copyright (C) 2009-2011 Dirk Meyer
+# Copyright (C) 2009-2013 Dirk Meyer
 #
 # First Edition: Dirk Meyer <dischi@freevo.org>
 # Maintainer:    Dirk Meyer <dischi@freevo.org>
@@ -46,13 +43,15 @@ import kaa
 import kaa.db
 from kaa.saxutils import ElementParser
 
+# kaa.webmetadata imports
 import core
-
-from .. import opensubtitles
 from .. import signals
 
 # get logging object
 log = logging.getLogger('beacon.tvdb')
+
+# internal version
+VERSION = 0.3
 
 WORKER_THREAD = 'WEBMETADATA'
 
@@ -78,14 +77,19 @@ def parse(url):
     parser.parse(url)
     return e.attr, results
 
+
 @kaa.threaded(WORKER_THREAD)
 def download(url):
     return urllib.urlopen(url).read()
+
 
 class Episode(core.Episode):
     """
     Object for an episode
     """
+
+    image = None
+
     def __init__(self, tvdb, series, season, dbrow):
         super(Episode, self).__init__()
         self._dbrow = dbrow
@@ -98,8 +102,6 @@ class Episode(core.Episode):
         self.overview = dbrow['data'].get('Overview')
         if dbrow['data'].get('filename'):
             self.image = self.tvdb.hostname + '/banners/' + dbrow['data']['filename']
-        else:
-            self.image = None
 
 
 class Season(core.Season):
@@ -114,7 +116,6 @@ class Season(core.Season):
         self.series = series
         self.number = season
 
-
     @property
     def episodes(self):
         """
@@ -124,7 +125,6 @@ class Season(core.Season):
         """
         if self._episode_cache_ver == self.tvdb.version:
             return self._episode_cache
-
         dbrows = self.tvdb._db.query(type='episode', parent=self.series._dbrow, season=self.number)
         episodes = [Episode(self.tvdb, self.series, self, dbrow) for dbrow in dbrows]
         # We can't assume the episode list will be in order, and that we won't
@@ -145,14 +145,40 @@ class Season(core.Season):
         self._episode_cache_ver = self.tvdb.version
         return self._episode_cache
 
+    def _get_banner(self, btype):
+        """
+        Get the image/poster/banner (btype)
+        """
+        banner = []
+        for entry in self.series._get_banner(u'season'):
+            if entry.data.get('Season', None) == str(self.number) and \
+                    entry.data.get('BannerType2', None) == btype:
+                banner.append(entry)
+        return banner
 
-    # @property
-    # def banner(self):
-    #     banner = []
-    #     for entry in self.series._get_banner(u'season'):
-    #         if entry.get('Season') == str(self.season):
-    #             banner.append(entry)
-    #     return banner
+    def get_all_posters(self):
+        """
+        Get all possible poster images
+        """
+        return self._get_banner('season')
+
+    def get_all_banners(self):
+        """
+        Get all possible banner images
+        """
+        return self._get_banner('seasonwide')
+
+    @property
+    def poster(self):
+        if self.get_all_posters():
+            return '%s/%s.poster.%02d.jpg' % (self.tvdb.imagedir, self.series.name, self.number)
+        return self.series.poster
+
+    @property
+    def banner(self):
+        if self.get_all_banners():
+            return '%s/%s.banner.%02d.jpg' % (self.tvdb.imagedir, self.series.name, self.number)
+        return self.series.banner
 
 
 class Series(core.Series):
@@ -180,7 +206,6 @@ class Series(core.Series):
         """
         if self._season_cache_ver == self.tvdb.version:
             return self._season_cache
-
         # Find out how many seasons in this series by fetching the highest season.
         seasons = self.tvdb._db.query(type='episode', parent=self._dbrow, attrs=['season'], distinct=True)
         highest = max(r['season'] for r in seasons) if seasons else 0
@@ -198,8 +223,10 @@ class Series(core.Series):
             episodes.extend(season.episodes)
         return episodes
 
-
     def _get_banner(self, btype):
+        """
+        Get the image/poster/banner (btype)
+        """
         banner = []
         for r in self.tvdb._db.query(type='banner', parent=self._dbrow, btype=btype):
             entry = r.get('data')
@@ -216,17 +243,47 @@ class Series(core.Series):
         banner.sort(lambda x,y: -cmp(float(x.data.get('Rating', 0)), float(y.data.get('Rating', 0))))
         return banner
 
-    @property
-    def images(self):
+    def get_all_images(self):
+        """
+        Get all possible background images
+        """
         return self._get_banner(u'fanart')
 
-    @property
-    def posters(self):
+    def get_all_posters(self):
+        """
+        Get all possible poster images
+        """
         return self._get_banner(u'poster')
+
+    def get_all_banners(self):
+        """
+        Get all possible banner images
+        """
+        return self._get_banner(u'series')
+
+    @property
+    def image(self):
+        """
+        Path in the local filesystem were the background image is stored
+        """
+        if self.get_all_images():
+            return '%s/%s.image.jpg' % (self.tvdb.imagedir, self.name)
+
+    @property
+    def poster(self):
+        """
+        Path in the local filesystem were the poster image is stored
+        """
+        if self.get_all_posters():
+            return '%s/%s.poster.jpg' % (self.tvdb.imagedir, self.name)
 
     @property
     def banner(self):
-        return self._get_banner(u'series')
+        """
+        Path in the local filesystem were the banner image is stored
+        """
+        if self.get_all_banners():
+            return '%s/%s.banner.jpg' % (self.tvdb.imagedir, self.name)
 
 
 class SearchResult(core.Series):
@@ -291,7 +348,6 @@ class TVDB(core.Database):
         self._db.update(current[0], **kwargs)
         return current[0]['id']
 
-
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
     def _update_series(self, id):
         info = self._db.query_one(type='series', tvdb=id)
@@ -299,10 +355,11 @@ class TVDB(core.Database):
             signals['sync'].emit(info.get('name'))
         else:
             signals['sync'].emit()
+        # download thetvdb information
         f = open(kaa.tempfile('thetvdb-%s.zip' % id), 'w')
         f.write((yield download(self.api + 'series/%s/all/en.zip' % id)))
         f.close()
-
+        # load zip data
         z = zipfile.ZipFile(f.name)
         parent = None
         for name, data in (yield parse(z.open('en.xml')))[1]:
@@ -318,7 +375,7 @@ class TVDB(core.Database):
             else:
                 log.error('unknown element: %s', name)
         self._db.commit()
-
+        # load image information
         for name, data in (yield parse(z.open('banners.xml')))[1]:
             if name == 'Banner':
                 self._update_db('banner', int(data.get('id')), btype=data.get('BannerType'),
@@ -327,7 +384,27 @@ class TVDB(core.Database):
                 log.error('unknown element: %s', name)
         self._db.commit()
         os.unlink(f.name)
-
+        # download metadata images
+        info = self._db.query_one(type='series', tvdb=id)
+        if not info:
+            yield None
+        serie = Series(self, info)
+        if serie.image and not os.path.isfile(serie.image):
+            data = yield serie.get_all_images()[0].fetch()
+            open(serie.image, 'w').write(data)
+        if serie.poster and not os.path.isfile(serie.poster):
+            data = yield serie.get_all_posters()[0].fetch()
+            open(serie.poster, 'w').write(data)
+        if serie.banner and not os.path.isfile(serie.banner):
+            data = yield serie.get_all_banners()[0].fetch()
+            open(serie.banner, 'w').write(data)
+        for season in serie.seasons:
+            if season.poster and season.get_all_posters() and not os.path.isfile(season.poster):
+                data = yield season.get_all_posters()[0].fetch()
+                open(season.poster, 'w').write(data)
+            if season.banner and season.get_all_banners() and not os.path.isfile(season.banner):
+                data = yield season.get_all_banners()[0].fetch()
+                open(season.banner, 'w').write(data)
 
     @property
     def series(self):
@@ -339,7 +416,6 @@ class TVDB(core.Database):
             self._series_cache_ver = self.version
         return self._series_cache
 
-
     def get_series(self, name):
         """
         Fetch a series by the series name or associated alias.
@@ -347,8 +423,6 @@ class TVDB(core.Database):
         obj = self._db.query_one(type='alias', tvdb=kaa.py3_str(name))
         if obj:
             return Series(self, self._db.query_one(type='series', id=obj['parent_id']))
-
-
 
     def get_entry_from_metadata(self, metadata, alias=None):
         """
@@ -363,7 +437,6 @@ class TVDB(core.Database):
                 if metadata.get('episode') <= len(result.episodes):
                     result = result.episodes[metadata.get('episode')-1]
         return result
-
 
     @kaa.coroutine()
     def search(self, name, filename=None, metadata=None):
@@ -395,15 +468,11 @@ class TVDB(core.Database):
             alias = kaa.py3_str(alias)
         if id.startswith(TVDB.scheme):
             id = id[len(TVDB.scheme):]
-
         if not self._db.get_metadata('webmetadata::servertime'):
             # DB does not contain server time.  Fetch and set.
             attr, data = yield parse(self.hostname + '/api/Updates.php?type=none')
             data = dict(data)
             self._db.set_metadata('webmetadata::servertime', int(data['Time']))
-            # XXX: why do we store localtime? Do we use this anywhere?
-            self._db.set_metadata('webmetadata::localtime', int(time.time()))
-
         series = self._db.query_one(type='series', tvdb=id)
         if not series:
             log.info('query thetvdb for %s' % id)
@@ -416,7 +485,6 @@ class TVDB(core.Database):
             else:
                 log.error('TheTVDB failed to provide a result')
                 yield False
-
         self._update_db('alias', series['name'], parent=series)
         if alias:
             for old in self._db.query(type='alias', tvdb=alias):
@@ -427,7 +495,6 @@ class TVDB(core.Database):
         self.notify_resync()
         yield Series(self, series)
 
-
     @kaa.coroutine(policy=kaa.POLICY_SYNCHRONIZED)
     def sync(self, force=False):
         """
@@ -437,29 +504,34 @@ class TVDB(core.Database):
         if not servertime:
             # No servertime stored, so there must not be any series in db.
             yield
+        if str(self._db.get_metadata('webmetadata::version')) != str(VERSION):
+            log.warning('kaa.webmetadata version change, force complete resync')
+            force = True
         # Grab all series ids currently in the DB.
         series = [ record['tvdb'] for record in self._db.query(type='series') ]
         if force:
             for id in series:
                 yield self._update_series(id)
+            self._db.set_metadata('webmetadata::version', VERSION)
             self.notify_resync()
             yield
         # Fetch all updates since the last stored servertime
         url = self.hostname + '/api/Updates.php?type=all&time=%s' % servertime
         attr, updates = (yield parse(url))
         banners = []
+        timeinfo = None
         for element, data in updates:
             if element == 'Series' and int(data) in series:
                 log.info('Update series %s', data)
                 yield self._update_series(data)
             elif element == 'Time':
-                log.info('Set servertime %s', data)
-                self._db_servertime = int(data)
-                self._db.set_metadata('webmetadata::servertime', int(data))
-                self._db.set_metadata('webmetadata::localtime', int(time.time()))
+                timeinfo = data
+        if timeinfo:
+            log.info('Set servertime %s', timeinfo)
+            self._db_servertime = int(timeinfo)
+            self._db.set_metadata('webmetadata::servertime', int(timeinfo))
         self._db.commit()
         self.notify_resync()
-
 
     @kaa.coroutine()
     def add_series_by_search_result(self, result, alias=None):
@@ -469,7 +541,6 @@ class TVDB(core.Database):
         if not result.id.startswith('thetvdb:'):
             raise ValueError('Search result is not a valid TheTVDB result')
         yield (yield self.add_series_by_id(result.id, alias))
-
 
     def delete_series(self, series):
         """
