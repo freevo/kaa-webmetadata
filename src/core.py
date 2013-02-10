@@ -1,12 +1,9 @@
 # -*- coding: iso-8859-1 -*-
 # -----------------------------------------------------------------------------
-# core.py - core classes for web parser
-# -----------------------------------------------------------------------------
-# $Id: $
-#
+# Core classes for kaa.webmetadata
 # -----------------------------------------------------------------------------
 # kaa.webmetadata - Receive Metadata from the Web
-# Copyright (C) 2011 Dirk Meyer
+# Copyright (C) 2011-2013 Dirk Meyer
 #
 # First Edition: Dirk Meyer <dischi@freevo.org>
 # Maintainer:    Dirk Meyer <dischi@freevo.org>
@@ -73,6 +70,9 @@ class Database(MediaInfo):
                 os.makedirs(dbdir)
             self._db = kaa.db.Database(database + '.db')
         self._versionfile = self._db.filename + '.version'
+        self.imagedir = self._db.filename + '.images'
+        if not os.path.isdir(self.imagedir):
+            os.makedirs(self.imagedir)
         if not os.path.exists(self._versionfile):
             open(self._versionfile, 'w').write('0')
         try:
@@ -138,7 +138,8 @@ class Entry(object):
     def __init__(self):
         self.id = None
         for key in self._keys:
-            setattr(self, key, None)
+            if not hasattr(self, key):
+                setattr(self, key, None)
 
     def items(self):
         return [ (key, getattr(self, key)) for key in self._keys ]
