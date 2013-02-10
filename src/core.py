@@ -101,7 +101,9 @@ class Database(MediaInfo):
         updating the version or the db.
         """
         self.version += 1
-        open(self._versionfile, 'w').write(str(self.version))
+        f = open(self._versionfile, 'w')
+        f.write(str(self.version))
+        f.close()
 
     @kaa.coroutine()
     def sync(self, force=False):

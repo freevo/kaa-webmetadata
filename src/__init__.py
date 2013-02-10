@@ -16,7 +16,7 @@ import movie
 from tv.core import Series, Season, Episode
 from movie.core import Movie
 
-signals = kaa.Signals('sync')
+signals = kaa.Signals('sync', 'changed')
 
 def init(base):
     """
@@ -28,6 +28,8 @@ def init(base):
     for module in tv, movie:
         module.init(base)
     initialized = True
+    for module in tv.backends.values() + movie.backends.values():
+        module.signals['changed'].connect(signals['changed'].emit)
 
 def parse(filename, metadata=None):
     """

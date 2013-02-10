@@ -473,6 +473,7 @@ class TVDB(core.Database):
             attr, data = yield parse(self.hostname + '/api/Updates.php?type=none')
             data = dict(data)
             self._db.set_metadata('webmetadata::servertime', int(data['Time']))
+            self._db.commit()
         series = self._db.query_one(type='series', tvdb=id)
         if not series:
             log.info('query thetvdb for %s' % id)

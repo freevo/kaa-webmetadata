@@ -289,6 +289,7 @@ class Plugin(object):
         server.ipc.register(plugin)
         plugin.notify_client = server.notify_client
         kaa.webmetadata.signals['sync'].connect(plugin._signal_sync)
+        kaa.webmetadata.signals['changed'].connect(plugin.sync)
 
         # schedule sync() every day and call on startup if it was not
         # called in the last 24 hours
