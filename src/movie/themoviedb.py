@@ -270,8 +270,12 @@ class MovieDB(core.Database):
                         data = yield self._server_call('search/movie', query=name, year=year)
             # guess by kaa.metadata title
             if not data or not data.get('results', None):
-                name = kaa.metadata.parse(filename).title.lower().replace('.', ' ').\
-                    replace('-', ' ').replace('_', ' ')
+                metadata = kaa.metadata.parse(filename)
+                if metadata:
+                    name = metadata.title
+                else:
+                    name = os.path.basename(filename)
+                name = name.lower().replace('.', ' ').replace('-', ' ').replace('_', ' ')
                 data = yield self._server_call('search/movie', query=name)
                 if not data or not data.get('results', None) and name.find('3d') > 0:
                     name = name[:name.find('3d')]
