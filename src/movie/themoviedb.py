@@ -71,6 +71,7 @@ class Movie(core.Movie):
         self.overview = data.get('overview', None)
         self.rating = data.get('vote_average', None)
         self.runtime = data.get('runtime', None)
+        self.genre = [ g['name'] for g in data.get('genres', []) ]
         self.year = None
         self.imdb = data.get('imdb_id', u'')
         if data.get('release_date') and len(data.get('release_date').split('-')) == 3:
@@ -271,7 +272,7 @@ class MovieDB(core.Database):
             # guess by kaa.metadata title
             if not data or not data.get('results', None):
                 metadata = kaa.metadata.parse(filename)
-                if metadata:
+                if metadata and metadata.title:
                     name = metadata.title
                 else:
                     name = os.path.basename(filename)
