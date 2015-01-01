@@ -71,7 +71,8 @@ class Plugin(object):
             if attr == 'image' and attributes.get('thumbnail'):
                 # hack: request a thumbnail here to force downloading
                 t = attributes.get('thumbnail')
-                t.create(t.PRIORITY_LOW)
+                if t.needs_update:
+                    t.create(t.PRIORITY_LOW)
                 return
         # changed value
         attributes[attr] = value
@@ -99,6 +100,7 @@ class Plugin(object):
             metadata = kaa.webmetadata.parse(filename)
         except Exception, e:
             # Something went wrong here
+            log.exception('kaa.webmetadata.parse')
             yield None
         if metadata and metadata.name:
             # Result from previous guessing (e.g. tv series)
@@ -121,7 +123,9 @@ class Plugin(object):
             self.guessing_failed.append(series)
             yield None
         if not attributes.get('length') or attributes.get('length') < 60 * 60:
-            # less than an hour does not look like a movie
+            # less than an hour does not look like a movie; mark file
+            # as guessed
+            attributes['webmetadata'] = filename
             yield None
         # we use the movie hash here. Therefore, the file should
         # be finished downloading or copying. This slows us down,
@@ -174,8 +178,20 @@ class Plugin(object):
         try:
             metadata = kaa.webmetadata.parse(filename, attributes)
         except Exception, e:
+            log.exception('kaa.webmetadata.parse')
             # Something went wrong here
             return
+        if not metadata:
+            if attributes.get('series'):
+                series = kaa.webmetadata.tv.series(attributes.get('series'))
+                if series:
+                    # A known series but the episode is unknown. Set
+                    # some basic information. This is required to
+                    # avoid getting two different names for the same
+                    # show (alias)
+                    self.set_attribute(attributes, 'movie', False)
+                    self.set_attribute(attributes, 'series', series.name)
+                    self.set_attribute(attributes, 'poster', series.poster)
         if not metadata or not metadata.name:
             # no metadata exists
             if not attributes.get('webmetadata') or filename != attributes.get('webmetadata'):
@@ -260,8 +276,8 @@ class Plugin(object):
             except Exception:
                 log.exception('sync error')
                 # something went wrong, maybe network down or
-                # something else. Try again in 60 seconds
-                yield kaa.delay(60)
+                # something else. Try again in 600 seconds
+                yield kaa.delay(600)
 
     def _signal_sync(self, msg=None):
         """
