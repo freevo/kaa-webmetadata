@@ -304,6 +304,9 @@ class TVDB(core.Database):
 
     scheme = 'thetvdb:'
 
+    # cache for faster access
+    __get_series_cache = None
+
     def __init__(self, database, apikey='1E9534A23E6D7DC0'):
         super(TVDB, self).__init__(database)
         self.hostname = 'http://www.thetvdb.com'
@@ -420,9 +423,14 @@ class TVDB(core.Database):
         """
         Fetch a series by the series name or associated alias.
         """
-        obj = self._db.query_one(type='alias', tvdb=kaa.py3_str(name))
+        if self.__get_series_cache and self.__get_series_cache[0] == self.version and \
+           self.__get_series_cache[1] == name:
+            return self.__get_series_cache[2]
+        obj, series = self._db.query_one(type='alias', tvdb=kaa.py3_str(name)), None
         if obj:
-            return Series(self, self._db.query_one(type='series', id=obj['parent_id']))
+            series = Series(self, self._db.query_one(type='series', id=obj['parent_id']))
+        self.__get_series_cache = self.version, name, series
+        return series
 
     def get_entry_from_metadata(self, metadata, alias=None):
         """
