@@ -110,6 +110,8 @@ class Plugin(object):
         series = attributes.get('series', None)
         if series:
             if series in self.guessing_failed:
+                # mark file as guessed
+                attributes['webmetadata'] = filename
                 yield None
             log.info('guess %s', filename)
             result = (yield kaa.webmetadata.tv.search(filename, attributes))
@@ -257,7 +259,6 @@ class Plugin(object):
                 pdict[pid] = []
             pdict[pid].append(item)
         for pos, parent in enumerate(sorted(pdict.keys())):
-            print pos, len(pdict), parent
             for item in pdict[parent]:
                 self.set_metadata(item.filename, item)
             beacon_add_directory_attributes(self.db, parent)
