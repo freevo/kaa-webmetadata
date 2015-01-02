@@ -42,6 +42,7 @@ import kaa.beacon
 
 # relative beacon server imports
 from ..parser import register as beacon_register
+from ..parser import add_directory_attributes as beacon_add_directory_attributes
 
 # get logging object
 log = logging.getLogger('beacon.webmetadata')
@@ -109,7 +110,6 @@ class Plugin(object):
         series = attributes.get('series', None)
         if series:
             if series in self.guessing_failed:
-                log.info('skip guessing %s', filename)
                 yield None
             log.info('guess %s', filename)
             result = (yield kaa.webmetadata.tv.search(filename, attributes))
@@ -241,16 +241,26 @@ class Plugin(object):
 
     @kaa.rpc.expose('webmetadata.sync')
     @kaa.coroutine(policy=kaa.POLICY_SINGLETON)
-    def sync(self, force=False):
+    def sync(self, force=False, backend_sync=True):
         """
         Sync the kaa.webmetadata databases
         """
-        log.info('sync web metadata')
-        for module in kaa.webmetadata.tv.backends.values() + kaa.webmetadata.movie.backends.values():
-            yield module.sync(force)
+        if backend_sync:
+            log.info('sync web metadata (force=%s)' % force)
+            for module in kaa.webmetadata.tv.backends.values() + kaa.webmetadata.movie.backends.values():
+                yield module.sync(force)
         log.info('adjust items')
+        pdict = {}
         for item in (yield kaa.beacon.query(type='video')):
-            self.set_metadata(item.filename, item)
+            pid = item.get('parent')
+            if not pid in pdict:
+                pdict[pid] = []
+            pdict[pid].append(item)
+        for pos, parent in enumerate(sorted(pdict.keys())):
+            print pos, len(pdict), parent
+            for item in pdict[parent]:
+                self.set_metadata(item.filename, item)
+            beacon_add_directory_attributes(self.db, parent)
             yield kaa.NotFinished
 
     @kaa.coroutine()
@@ -305,7 +315,7 @@ class Plugin(object):
         server.ipc.register(plugin)
         plugin.notify_client = server.notify_client
         kaa.webmetadata.signals['sync'].connect(plugin._signal_sync)
-        kaa.webmetadata.signals['changed'].connect(plugin.sync)
+        kaa.webmetadata.signals['changed'].connect(plugin.sync, backend_sync=False)
 
         # schedule sync() every day and call on startup if it was not
         # called in the last 24 hours
