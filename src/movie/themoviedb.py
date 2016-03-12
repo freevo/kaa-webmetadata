@@ -67,7 +67,7 @@ class Movie(core.Movie):
         self.moviedb = moviedb
         self.id = 'themoviedb:%s' % data['id']
         self.name = data.get('title', None)
-        self.tageline = data.get('tagline', None)
+        self.tagline = data.get('tagline', None)
         self.overview = data.get('overview', None)
         self.rating = data.get('vote_average', None)
         self.runtime = data.get('runtime', None)
