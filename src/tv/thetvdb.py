@@ -97,8 +97,9 @@ class Episode(core.Episode):
         self.series = series
         self.season = season
         self.number = dbrow['data'].get('EpisodeNumber')
-        self.name = dbrow['name']
+        self.name = dbrow['name'] or 'Season %s, Episode %s' % (self.season.number, self.number)
         self.imdb = dbrow['data'].get('IMDB_ID')
+        self.date = dbrow['data'].get('FirstAired', None)
         self.overview = dbrow['data'].get('Overview')
         if dbrow['data'].get('filename'):
             self.image = self.tvdb.hostname + '/banners/' + dbrow['data']['filename']
@@ -220,7 +221,7 @@ class Series(core.Series):
         """
         episodes = []
         for season in self.seasons:
-            episodes.extend(season.episodes)
+            episodes.extend([e for e in season.episodes if e is not None])
         return episodes
 
     def _get_banner(self, btype):
@@ -328,6 +329,7 @@ class TVDB(core.Database):
             name = (unicode, kaa.db.ATTR_SEARCHABLE),
             season = (int, kaa.db.ATTR_SEARCHABLE),
             episode = (int, kaa.db.ATTR_SEARCHABLE),
+            date = (unicode, kaa.db.ATTR_SEARCHABLE),
             data = (dict, kaa.db.ATTR_SIMPLE),
         )
         self._db.register_object_type_attrs("banner",
@@ -369,12 +371,15 @@ class TVDB(core.Database):
             if name == 'Series':
                 objid = self._update_db('series', int(data.get('id')), name=data.get('SeriesName'), data=data)
                 parent = ('series', objid)
+                # delete old entries
+                for e in self._db.query(type='episode', parent=parent):
+                    self._db.delete(e)
             elif name == 'Episode':
                 if not parent:
                     raise ValueError('Unexpected parse error: got Episode element before Series')
                 self._update_db('episode', int(data.get('id')), name=data.get('EpisodeName'), parent=parent,
                     season=int(data.get('SeasonNumber')), episode=int(data.get('EpisodeNumber')),
-                    data=data)
+                    date=data.get('FirstAired', None), data=data)
             else:
                 log.error('unknown element: %s', name)
         self._db.commit()
