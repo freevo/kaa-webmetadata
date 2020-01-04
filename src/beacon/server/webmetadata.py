@@ -9,8 +9,8 @@
 # kaa.webmetadata - Receive Metadata from the Web
 # Copyright (C) 2010-2012 Dirk Meyer
 #
-# First Edition: Dirk Meyer <dischi@freevo.org>
-# Maintainer:    Dirk Meyer <dischi@freevo.org>
+# First Edition: Dirk Meyer <https://github.com/Dischi>
+# Maintainer:    Dirk Meyer <https://github.com/Dischi>
 #
 # Please see the file AUTHORS for a complete list of authors.
 #
